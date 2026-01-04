@@ -3,6 +3,11 @@
 Unofficial UI translation tool for **Alchemy VTT**, based on a user-editable dictionary.
 <br>A-Translator allows you to translate Alchemy’s interface locally using your own terms, without modifying the platform or its content.
 
+> ⚠️ **Status notice**  
+> A-Translator itself is **stable and fully functional**.  
+> However, the provided dictionaries are **still a work in progress** and will be expanded and refined over time.  
+> Expect missing entries and inconsistencies while the dictionaries evolve.
+
 ## What is A-Translator?
 
 A-Translator is a **Tampermonkey userscript** that:
@@ -13,6 +18,8 @@ A-Translator is a **Tampermonkey userscript** that:
 - Stores everything **locally in your browser**
 
 No data is sent anywhere.
+
+![A-Translator interface](assets/a-translator-ui.png)
 
 ## What A-Translator is NOT
 
@@ -39,7 +46,7 @@ Open **Tampermonkey Dashboard → Settings** and ensure:
 - **Allow scripts in private / incognito windows**  
 If these options are disabled, the script may install correctly but **will not run**.
 
-### 2. Install A-Translator
+### 3. Install A-Translator
 Open this link and confirm installation:<br>
 **https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/userscript/a-translator.user.js**<br>
 Tampermonkey will prompt you to install or update the script.
@@ -49,7 +56,8 @@ Tampermonkey will prompt you to install or update the script.
 - A floating button appears on the left side
 - Click it to open the A-Translator panel
 - Edit your dictionary.
-- Save → translations apply (You may need to reload the page the first time you use it.)
+- Save → translations apply<br>
+***Note:** You may need to reload the page once after the first installation.*
 
 You can:
 - Export / import dictionaries (JSON)
@@ -57,11 +65,29 @@ You can:
 - Disable translations at any time
 
 ## Dictionaries
-This repository includes a **base French dictionary** that can be imported directly into A-Translator and customized to your needs.
+This repository includes:
+- A **base French dictionary** ready to import  
+  → `dictionaries/fr.json`
+- A **blank dictionary template**  
+  → `dictionaries/template-empty.json`
 
-A **blank dictionary template** is also provided. It can be used as a starting point to create dictionaries for other languages.
+Both files can be imported directly from the A-Translator interface.<br>
+The French dictionary can be used as-is or customized to match your preferred terminology.<br>
+The blank template is intended as a starting point for other languages.
 
-Contributions are welcome: if you create a dictionary for another language, feel free to share it. I’m happy to host community-made dictionaries in this repository for others to use.
+### Community contributions
+If you create a dictionary for another language, feel free to share it.  
+I’m happy to host community-made dictionaries in this repository so others can benefit from them.
+
+## Uninstall
+Before uninstalling, **disable the A-Translator script in Tampermonkey**.
+
+Then:
+- Open the A-Translator panel
+- Click the **Uninstall** button
+
+This removes the UI, loader, script, and local dictionary from your browser.<br>
+You can re-enable or remove the Tampermonkey script afterwards if needed.
 
 ## Disclaimer
 *Alchemy* is © Arboreal, LLC.  
