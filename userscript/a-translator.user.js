@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         A-Translator
 // @namespace    https://github.com/BriocheMasquee
-// @version      1.0.0
+// @version      1.0.1
 // @description  Unofficial Alchemy VTT UI translator (dictionary-based)
 // @author       BriocheMasquee
 // @match        https://app.alchemyrpg.com/*
