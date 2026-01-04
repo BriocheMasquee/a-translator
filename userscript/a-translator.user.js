@@ -3,6 +3,7 @@
 // @namespace    https://github.com/BriocheMasquee
 // @version      1.0.0
 // @description  Unofficial Alchemy VTT UI translator (dictionary-based)
+// @author       BriocheMasquee
 // @match        https://app.alchemyrpg.com/*
 // @run-at       document-end
 // @grant        none
