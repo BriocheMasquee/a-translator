@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         A-Translator
 // @namespace    https://github.com/BriocheMasquee
-// @version      1.0.1
+// @version      1.1.0
 // @description  Unofficial Alchemy VTT UI translator (dictionary-based)
-// @author       BriocheMasquee
+// @author       Brioche Masquée
 // @match        https://app.alchemyrpg.com/*
 // @run-at       document-end
 // @grant        none
@@ -17,11 +17,18 @@
 (() => {
   "use strict";
 
+  const SCRIPT_VERSION =
+    (typeof GM_info !== "undefined" && GM_info?.script?.version) ||
+    (typeof GM !== "undefined" && GM?.info?.script?.version) ||
+    "dev";
+
   // =========================
   // SETTINGS
   // =========================
   const KEY_DICT = "__alchemy_translate_dict__";
   const KEY_ENABLED = "__alchemy_translate_enabled__";
+  const KEY_DICT_META = "__alchemy_translate_dict_meta__";
+  const KEY_META_LEGACY = "__alchemy_translate_meta__";
 
   // =========================
   // CORE
@@ -376,6 +383,30 @@
     localStorage.setItem(KEY_DICT, JSON.stringify(obj || {}));
   }
 
+  function loadMeta() {
+  try {
+    const old = localStorage.getItem(KEY_META_LEGACY);
+    const cur = localStorage.getItem(KEY_DICT_META);
+
+    if (old && !cur) {
+      localStorage.setItem(KEY_DICT_META, old);
+      localStorage.removeItem(KEY_META_LEGACY);
+    }
+
+    const raw = JSON.parse(localStorage.getItem(KEY_DICT_META) || "{}");
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+    return raw;
+  } catch (_) {
+    return {};
+  }
+}
+
+  function saveMeta(meta) {
+  try {
+    localStorage.setItem(KEY_DICT_META, JSON.stringify(meta || {}));
+  } catch (_) {}
+}
+
   function loadEnabledFlag() {
     try {
       const v = localStorage.getItem(KEY_ENABLED);
@@ -397,21 +428,41 @@
   }
 
   function exportDict() {
-    const data = loadDictionary();
-    const json = JSON.stringify(data, null, 2);
+  const entries = loadDictionary();
+  const meta = loadMeta();
 
-    const blob = new Blob([json], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
+  const lang = String(meta.lang || "und").trim().toLowerCase();
+  const dictVersion = String(meta.dictVersion || "0").trim();
 
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "alchemy-translate-dict.json";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+  const payload = {
+    meta: {
+      lang,
+      dictVersion,
+      scriptVersion: SCRIPT_VERSION,
+      exportedAt: new Date().toISOString()
+    },
+    entries
+  };
 
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-  }
+  const json = JSON.stringify(payload, null, 2);
+
+  // Nom de fichier : langue + version du dictionnaire
+  const safeLang = lang.replace(/[^a-z0-9-]/g, "") || "undefined";
+  const safeVer = dictVersion.replace(/[^0-9A-Za-z._-]/g, "") || "0";
+  const filename = `${safeLang}-dict-v${safeVer}.json`;
+
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
   function importDictFromJsonText(jsonText, mode = "replace") {
     mode = mode === "merge" ? "merge" : "replace";
@@ -422,6 +473,12 @@
     } catch (e) {
       console.error("[A-Translator] Import: invalid JSON", e);
       return { ok: false, error: "Invalid JSON" };
+    }
+
+    let importedMeta = null;
+    if (data && typeof data === "object" && !Array.isArray(data) && data.entries && typeof data.entries === "object") {
+      importedMeta = (data.meta && typeof data.meta === "object") ? data.meta : null;
+      data = data.entries;
     }
 
     if (!data || typeof data !== "object" || Array.isArray(data)) {
@@ -450,6 +507,19 @@
 
     const next = mode === "merge" ? { ...current, ...cleaned } : cleaned;
 
+    if (importedMeta) {
+      const prev = loadMeta();
+
+      const lang = String(importedMeta.lang || prev.lang || "und").trim().toLowerCase();
+      const dictVersion = String(importedMeta.dictVersion || prev.dictVersion || "0").trim();
+
+      saveMeta({
+        ...prev,
+        lang,
+        dictVersion
+      });
+    }
+
     saveDictionary(next);
     applyTranslations();
 
@@ -463,6 +533,8 @@
 
     localStorage.removeItem(KEY_DICT);
     localStorage.removeItem(KEY_ENABLED);
+    localStorage.removeItem(KEY_DICT_META);
+    localStorage.removeItem(KEY_META_LEGACY);
 
     try { delete window.AlchemyTranslate; } catch (_) {}
     try { delete window.__AlchemyTranslateCore__; } catch (_) {}
@@ -522,7 +594,7 @@
     );
 
     const title = document.createElement("div");
-    title.textContent = "A-TRANSLATOR";
+    title.textContent = "A-TRANSLATOR (v " + SCRIPT_VERSION + ")";
     title.style.cssText = css("font-weight:600;", "font-size:16px;");
 
     const subtitle = document.createElement("div");
@@ -728,10 +800,13 @@
     const dictToLinesFromStorage = () => dictToLines(loadDictionary());
 
     let filterQuery = "";
-    let fullText = dictToLinesFromStorage();
+
+    let draftDict = loadDictionary();
+    let fullText = dictToLines(draftDict);
+    let currentFilteredKeys = null;
 
     function refreshTextarea() {
-      fullText = dictToLinesFromStorage();
+      fullText = dictToLines(draftDict);
       renderTextarea();
     }
 
@@ -807,7 +882,7 @@
     );
 
     const hint = document.createElement("div");
-    hint.textContent = "DICTIONARY ENTRIES";
+    hint.textContent = "DICTIONARY";
     hint.style.cssText = css(
       "font-weight:600;",
       "font-size:12px;",
@@ -903,21 +978,33 @@
         n++;
       }
 
-      el.textContent = "(" + n + " entries)";
+      const meta = loadMeta();
+      const lang = String(meta.lang || "und").trim().toLowerCase();
+      const dictVersion = String(meta.dictVersion || "0").trim();
+
+      const safeLang = lang.replace(/[^a-z0-9-]/g, "") || "und";
+      const safeVer = dictVersion.replace(/[^0-9A-Za-z._-]/g, "") || "0";
+
+      el.textContent = `LANG : ${safeLang.toUpperCase()} V${safeVer.toUpperCase()} • ${n} entries`;
     }
 
     function renderTextarea() {
       const q = String(filterQuery || "").trim();
 
       if (!q) {
+        currentFilteredKeys = null;
         textarea.readOnly = false;
+
+        fullText = dictToLines(draftDict);
         textarea.value = fullText;
+
         updateEntryCount();
         return;
       }
 
       const re = new RegExp(escapeRegExp(q), "i");
-      const lines = String(fullText || "").split("\n");
+
+      const lines = dictToLines(draftDict).split("\n");
 
       const filtered = lines.filter((line) => {
         const l = line.trim();
@@ -926,7 +1013,15 @@
         return re.test(line);
       });
 
-      textarea.readOnly = true;
+      currentFilteredKeys = filtered
+        .map((line) => {
+          const idx = line.indexOf("=");
+          if (idx === -1) return null;
+          return line.slice(0, idx).trim().toLowerCase();
+        })
+        .filter(Boolean);
+
+      textarea.readOnly = false;
       textarea.value = filtered.join("\n");
       updateEntryCount();
     }
@@ -935,7 +1030,38 @@
 
     textarea.addEventListener("input", () => {
       const q = String(filterQuery || "").trim();
-      if (!q) fullText = textarea.value;
+
+      const parsed = {};
+      for (const line of String(textarea.value || "").split("\n")) {
+        const l = line.trim();
+        if (!l || l.startsWith("#")) continue;
+
+        const idx = l.indexOf("=");
+        if (idx === -1) continue;
+
+        const src = l.slice(0, idx).trim().toLowerCase();
+        const dst = l.slice(idx + 1).trim();
+        if (!src || !dst) continue;
+
+        parsed[src] = dst;
+      }
+
+      if (!q) {
+        draftDict = parsed;
+      } else {
+        for (const [k, v] of Object.entries(parsed)) {
+          draftDict[k] = v;
+        }
+
+        if (Array.isArray(currentFilteredKeys)) {
+          for (const k of currentFilteredKeys) {
+            if (!Object.prototype.hasOwnProperty.call(parsed, k)) {
+              delete draftDict[k];
+            }
+          }
+        }
+      }
+
       updateEntryCount();
     });
 
@@ -1024,35 +1150,56 @@
     });
     btnClose.addEventListener("click", close);
 
-    btnSave.addEventListener("click", () => {
-      const q = String(filterQuery || "").trim();
-      const textToParse = q ? fullText : textarea.value;
+function applyEditsFromTextarea() {
+  const lines = String(textarea.value || "").split("\n");
 
-      const out = {};
-      for (const line of String(textToParse || "").split("\n")) {
-        const l = line.trim();
-        if (!l || l.startsWith("#")) continue;
+  for (const line of lines) {
+    const l = line.trim();
+    if (!l || l.startsWith("#")) continue;
 
-        const idx = l.indexOf("=");
-        if (idx === -1) continue;
+    const idx = l.indexOf("=");
+    if (idx === -1) continue;
 
-        const src = l.slice(0, idx).trim().toLowerCase();
-        const dst = l.slice(idx + 1).trim();
-        if (!src || !dst) continue;
+    const src = l.slice(0, idx).trim().toLowerCase();
+    const dst = l.slice(idx + 1).trim();
 
-        out[src] = dst;
+    if (!src) continue;
+
+    if (dst) {
+      draftDict[src] = dst;
+    } else {
+      delete draftDict[src];
+    }
+  }
+}
+
+  btnSave.addEventListener("click", () => {
+      if (typeof applyEditsFromTextarea === "function") {
+        applyEditsFromTextarea();
       }
 
-      saveDictionary(out);
-      applyTranslations();
-      close();
-    });
+    const meta = loadMeta();
+    if (!meta.lang) {
+      const guessed = String(navigator.language || "undefined")
+        .split("-")[0]
+        .toLowerCase();
+      saveMeta({ ...meta, lang: guessed || "undefined" });
+    }
+    if (!meta.dictVersion) {
+      saveMeta({ ...loadMeta(), dictVersion: "1" }); // ou "0" si tu préfères
+    }
 
-    overlay.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") close();
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
-        e.preventDefault();
-        btnSave.click();
+    saveDictionary(draftDict);
+
+    applyTranslations();
+    close();
+  });
+
+  overlay.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") close();
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      btnSave.click();
       }
     });
   }
