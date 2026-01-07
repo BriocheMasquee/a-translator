@@ -3,11 +3,6 @@
 Unofficial UI translation tool for **Alchemy VTT**, based on a user-editable dictionary.
 <br>A-Translator allows you to translate Alchemy’s interface locally using your own terms, without modifying the platform or its content.
 
-> ⚠️ **Status notice**  
-> A-Translator itself is **stable and fully functional**.  
-> However, the provided dictionaries are **still a work in progress** and will be expanded and refined over time.  
-> Expect missing entries and inconsistencies while the dictionaries evolve.
-
 ## What is A-Translator?
 
 A-Translator is a **Tampermonkey userscript** that:
@@ -19,7 +14,7 @@ A-Translator is a **Tampermonkey userscript** that:
 
 No data is sent anywhere.
 
-![A-Translator interface](assets/a-translator-ui.png)
+![A-Translator interface](assets/a-translator-ui-v1.1.png)
 
 ## What A-Translator is NOT
 
@@ -67,13 +62,25 @@ You can:
 ## Dictionaries
 This repository includes:
 - A **base French dictionary** ready to import  
-  → `dictionaries/fr.json`
+  → `dictionaries/fr-dict-v1.json`
 - A **blank dictionary template**  
-  → `dictionaries/template-empty.json`
+  → `dictionaries/template-dict-v1.json`
 
-Both files can be imported directly from the A-Translator interface.<br>
-The French dictionary can be used as-is or customized to match your preferred terminology.<br>
-The blank template is intended as a starting point for other languages.
+Both files can be imported directly from the A-Translator interface.
+
+### Dictionary metadata
+Dictionaries use a structured format with a `meta` section and an `entries` section.
+
+The `meta` block stores non-editable information used by A-Translator:
+- `lang` — language code of the dictionary (e.g. `fr`, `en`)
+- `dictVersion` — dictionary version number
+- `scriptVersion` — A-Translator script version used to generate the file
+
+This metadata is:
+- automatically included on export,
+- displayed read-only in the editor,
+- preserved and merged on import,
+- fully backward-compatible with older dictionary files.
 
 ### Community contributions
 If you create a dictionary for another language, feel free to share it.  
