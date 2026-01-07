@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         A-Translator
 // @namespace    https://github.com/BriocheMasquee
-// @version      1.1.0
+// @version      1.1.1
 // @description  Unofficial Alchemy VTT UI translator (dictionary-based)
 // @author       Brioche Masquée
 // @match        https://app.alchemyrpg.com/*
@@ -825,7 +825,11 @@
           return;
         }
 
+        draftDict = loadDictionary();
+        filterQuery = "";
+        searchInput.value = "";
         refreshTextarea();
+
         exportHint.textContent = "Imported " + res.count + " new entries (" + res.mode + ")";
         setTimeout(() => (exportHint.textContent = ""), 2500);
       } catch (e) {
