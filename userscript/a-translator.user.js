@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         A-Translator
 // @namespace    https://github.com/BriocheMasquee
-// @version      1.1.1
+// @version      1.2.0
 // @description  Unofficial Alchemy VTT UI translator (dictionary-based)
 // @author       Brioche Masquée
 // @match        https://app.alchemyrpg.com/*
@@ -29,6 +29,7 @@
   const KEY_ENABLED = "__alchemy_translate_enabled__";
   const KEY_DICT_META = "__alchemy_translate_dict_meta__";
   const KEY_META_LEGACY = "__alchemy_translate_meta__";
+  const KEY_USER_TEXTS = "__alchemy_translate_user_texts__";
 
   // =========================
   // CORE
@@ -37,12 +38,17 @@
     window.__AlchemyTranslateCore__ ||
     (window.__AlchemyTranslateCore__ = {
       dict: new Map(),
+      userTexts: new Set(),
+      userTextsMax: 2000,
+      recentUserValuesByScopeKey: new Map(),
+      recentUserValuesTTLms: 10 * 60 * 1000,
       enabled: true,
 
       textOrig: new WeakMap(),
       touchedText: new Set(),
       touchedEls: new Set(),
       mutatingText: new WeakSet(),
+      lastSetText: new WeakMap(),
 
       obs: null,
       isApplying: false,
@@ -128,6 +134,73 @@
         return next.size;
       },
 
+      loadUserTextsFromStorage() {
+        try {
+          const raw = JSON.parse(localStorage.getItem(KEY_USER_TEXTS) || "[]");
+          const next = [];
+
+          if (Array.isArray(raw)) {
+           for (const s of raw) {
+              if (typeof s !== "string") continue;
+              const k = this._normUserText(s);
+              if (!k) continue;
+              if (k.length > 200) continue;
+             next.push(k);
+           }
+         }
+
+          if (next.length > this.userTextsMax) {
+            next.splice(0, next.length - this.userTextsMax);
+          }
+
+          this.userTexts = new Set(next);
+       } catch (_) {
+          this.userTexts = new Set();
+        }
+        return this.userTexts.size;
+      },
+
+      saveUserTextsToStorage() {
+       try {
+         const arr = Array.from(this.userTexts);
+         if (arr.length > this.userTextsMax) {
+           arr.splice(0, arr.length - this.userTextsMax);
+         }
+          localStorage.setItem(KEY_USER_TEXTS, JSON.stringify(arr));
+        } catch (_) {}
+      },
+
+      _normUserText(s) {
+        return String(s || "")
+         .replace(/\u00A0/g, " ")
+          .replace(/[\u200B-\u200D\uFEFF]/g, "")
+          .replace(/\s+/g, " ")
+          .trim()
+          .toLowerCase();
+      },
+
+      rememberUserText(value) {
+        const key = this._normUserText(value);
+        if (!key) return false;
+
+        if (key.length > 200) return false;
+        if (!/[a-zàâçéèêëîïôûùüÿñæœ]/i.test(key)) return false;
+
+        if (!this.userTexts.has(key)) {
+          this.userTexts.add(key);
+
+          if (this.userTexts.size > this.userTextsMax) {
+            const arr = Array.from(this.userTexts);
+            const keep = arr.slice(Math.max(0, arr.length - this.userTextsMax));
+            this.userTexts = new Set(keep);
+         }
+
+          this.saveUserTextsToStorage();
+        }
+
+        return true;
+      },
+
       translateString(s) {
         const trimmed = s.trim();
         if (!trimmed) return null;
@@ -138,21 +211,141 @@
 
       setText(node, value) {
         if (node.nodeValue === value) return;
+        this.lastSetText.set(node, value);
         this.mutatingText.add(node);
         node.nodeValue = value;
         queueMicrotask(() => this.mutatingText.delete(node));
       },
 
-      translateTextNode(node) {
+      _isInEditableText(nodeOrEl) {
+        const el = nodeOrEl?.nodeType === 1 ? nodeOrEl : nodeOrEl?.parentElement;
+        if (!el || !el.closest) return false;
+
+        return !!el.closest("textarea, [contenteditable], [role='textbox']");
+      },
+
+      _getScopeKey(el) {
+        const dlg = el.closest?.('[role="dialog"]');
+        if (dlg) {
+         const title =
+            dlg.getAttribute("aria-label") ||
+           dlg.querySelector?.("h1,h2,[data-testid*='title'],[data-id*='title']")?.textContent ||
+            "";
+         return "dlg:" + location.pathname + ":" + String(title).trim().toLowerCase();
+       }
+       return "page:" + location.pathname;
+      },
+
+      _harvestFieldValues(el, scopeKey) {
+       const root = el.closest?.('[role="dialog"]') || document.body;
+
+        let bucket = this.recentUserValuesByScopeKey.get(scopeKey);
+        if (!bucket) {
+          bucket = new Map();
+          this.recentUserValuesByScopeKey.set(scopeKey, bucket);
+        }
+
+        const fields = root.querySelectorAll?.("input, textarea") || [];
+        for (const f of fields) {
+        if (f.tagName === "INPUT") {
+            const type = (f.getAttribute("type") || "text").toLowerCase();
+              if (type && !["text", "search", "email", "url", "tel", "password"].includes(type)) continue;
+            }
+
+          const v = String(f.value || "").trim();
+          if (!v) continue;
+          if (v.length > 200) continue;
+
+          bucket.set(v.toLowerCase(), Date.now() + this.recentUserValuesTTLms);
+        }
+      },
+
+      _isRecentUserValue(node) {
+        const el = node?.parentElement;
+        if (!el) return false;
+
+        const raw = (node.nodeValue || "").trim();
+        if (!raw) return false;
+        if (raw.length > 200) return false;
+
+        const key = this._getScopeKey(el);
+        this._harvestFieldValues(el, key);
+
+        const bucket = this.recentUserValuesByScopeKey.get(key);
+        if (!bucket) return false;
+
+        const k = raw.toLowerCase();
+        const exp = bucket.get(k);
+        if (!exp) return false;
+
+        if (Date.now() > exp) {
+          bucket.delete(k);
+          return false;
+        }
+        return true;
+      },
+
+      _isInChatUserMessage(nodeOrEl) {
+       const el = nodeOrEl?.nodeType === 1 ? nodeOrEl : nodeOrEl?.parentElement;
+        if (!el || !el.closest) return false;
+        if (!el.closest('[data-testid="virtuoso-item-list"]')) return false;
+        const row = el.closest('div[style*="flex-direction: row"][style*="padding-left: 6px"]');
+        if (!row) return false;
+        if (row.querySelector("img")) return false;
+        const txt = (row.textContent || "").toLowerCase();
+        if (/\b\d+\s*d\s*\d+\b/.test(txt)) return false;
+        if (txt.includes("dice roll") || txt.includes("reroll")) return false;
+        return true;
+      },
+
+      _isInNotesItem(nodeOrEl) {
+        const el = nodeOrEl?.nodeType === 1 ? nodeOrEl : nodeOrEl?.parentElement;
+        if (!el || !el.closest) return false;
+        const item = el.closest('div[aria-expanded="false"]');
+        if (!item) return false;
+        for (let cur = item; cur && cur !== document.documentElement; cur = cur.parentElement) {
+          if (!cur.querySelector) continue;
+
+          const hasNotesTextarea = !!cur.querySelector(
+            'textarea[data-at-orig-placeholder="Entry"], textarea[placeholder="Écrire"]'
+          );
+          if (hasNotesTextarea) return true;
+          if (cur.matches && cur.matches('div[data-id="tab-view-page"]')) break;
+        }
+        return false;
+      },
+
+      translateTextNode(node, updateOrig = false) {
         const raw = node.nodeValue;
-        if (raw == null) return;
+       if (raw == null) return;
+
+        if (
+         this._isInEditableText(node) ||
+          this._isInChatUserMessage(node) ||
+          this._isInNotesItem(node) ||
+          this._isRecentUserValue(node)
+       ) {
+          if (this.textOrig.has(node)) this.restoreTextNode(node);
+         return;
+        }
 
         if (!this.textOrig.has(node)) {
           this.textOrig.set(node, raw);
           this.touchedText.add(node);
         }
 
+        if (updateOrig) {
+          this.textOrig.set(node, raw);
+          this.touchedText.add(node);
+       }
+
         const original = this.textOrig.get(node) ?? raw;
+        
+        const norm = this._normUserText(original);
+        if (norm && this.userTexts.has(norm)) {
+          this.setText(node, original);
+          return;
+        }
         const replaced = this.translateString(original);
 
         if (replaced) this.setText(node, replaced);
@@ -249,8 +442,16 @@
           for (const m of mutations) {
             if (m.type === "characterData") {
               const t = m.target;
-              if (this.mutatingText.has(t)) continue;
-              this.translateTextNode(t);
+
+              if (this.mutatingText.has(t)) {
+               const last = this.lastSetText.get(t);
+               if (last != null && t.nodeValue === last) continue;
+              }
+
+              this.translateTextNode(t, true);
+
+              const p = t.parentElement;
+              if (p) this.scanTranslate(p);
             } else if (m.type === "childList") {
               for (const node of m.addedNodes) this.scanTranslate(node);
             }
@@ -267,6 +468,43 @@
 
   core.loadDictFromStorage();
   core.loadEnabledFromStorage();
+  core.loadUserTextsFromStorage();
+
+  function installRecentUserValueTracker() {
+    const track = (e) => {
+      if (!core || !core.enabled) return;
+      const t = e.target;
+      if (!t || !t.matches) return;
+      if (!t.matches("input, textarea, [contenteditable], [role='textbox']")) return;
+
+      let v = "";
+      if (typeof t.value === "string") v = t.value;
+      else v = t.textContent || "";
+
+      v  = String(v || "").trim();
+      if (!v) return;
+      if (v.length > 200) return;
+
+      core.rememberUserText(v);
+
+      const scopeKey = core._getScopeKey(t);
+
+      let bucket = core.recentUserValuesByScopeKey.get(scopeKey);
+      if (!bucket) {
+        bucket = new Map();
+        core.recentUserValuesByScopeKey.set(scopeKey, bucket);
+      }
+
+      bucket.set(v.toLowerCase(), Date.now() + core.recentUserValuesTTLms);
+    };
+
+    document.addEventListener("input", track, true);
+    document.addEventListener("change", track, true);
+    document.addEventListener("blur", track, true);
+    document.addEventListener("compositionend", track, true);
+  }
+
+  installRecentUserValueTracker();
 
   function startCore() {
     if (!core.enabled) return;
