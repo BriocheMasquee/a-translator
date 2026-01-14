@@ -14,7 +14,7 @@
       "id": "es-core",
       "name": "Spanish — Core UI",
       "lang": "es",
-      "dictVersion": "1.6",
+      "dictVersion": "1.7",
       "description": "Base interface translation.",
       "url": "https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/dictionaries/es-dict-v1.json"
     },
