@@ -1,15 +1,15 @@
 {
   "schema": 1,
   "repository": "BriocheMasquee/a-translator",
-  "lastUpdate": "2025-01-14T09:00:00Z",
+  "lastUpdate": "2025-01-14T10:00:00Z",
   "dictionaries": [
     {
       "id": "fr-dict-v1",
-      "name": "FR DICT V1",
-      "description": "Interface utilisateur complète en français",
+      "name": "DICO FR V1",
+      "description": "Le bon !",
       "lang": "fr",
-      "dictVersion": "1.2.0",
-      "entries": 450,
+      "dictVersion": "1.0",
+      "entries": 997,
       "size": "12KB",
       "url": "https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/dictionaries/fr-dict-v1.json",
       "tags": ["ui", "official"],
@@ -17,14 +17,14 @@
       "lastUpdate": "2025-01-13"
     },
     {
-      "id": "fr-test1",
-      "name": "FR TEST 1",
-      "description": "Termes de jeu et mécaniques RPG",
-      "lang": "fr",
+      "id": "es-dict-v1",
+      "name": "FAUX dic es",
+      "description": "contient 3 entrées",
+      "lang": "es",
       "dictVersion": "1.0",
-      "entries": 230,
+      "entries": 3,
       "size": "7KB",
-      "url": "https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/dictionaries/frtest1.json",
+      "url": "https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/dictionaries/es-dict-v1.json",
       "tags": ["game", "official"],
       "author": "Brioche Masquée",
       "lastUpdate": "2025-01-10"
