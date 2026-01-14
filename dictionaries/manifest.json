@@ -4,17 +4,30 @@
   "lastUpdate": "2025-01-13T12:00:00Z",
   "dictionaries": [
     {
-      "id": "fr-dict-v1",
+      "id": "fr-ui-core",
       "name": "🇫🇷 French UI Core",
       "description": "Interface utilisateur complète en français",
       "lang": "fr",
-      "dictVersion": "1.9.9",
-      "entries": 997,
-      "size": "56.8KB",
-      "url": "https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/dictionaries/fr-dict-v1.json",
+      "dictVersion": "1.2.0",
+      "entries": 450,
+      "size": "12KB",
+      "url": "https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/dictionaries/fr-ui-core.json",
       "tags": ["ui", "official"],
       "author": "Brioche Masquée",
       "lastUpdate": "2025-01-13"
+    },
+    {
+      "id": "fr-game-terms",
+      "name": "🇫🇷 French Game Terms",
+      "description": "Termes de jeu et mécaniques RPG",
+      "lang": "fr",
+      "dictVersion": "0.8.0",
+      "entries": 230,
+      "size": "7KB",
+      "url": "https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/dictionaries/fr-game-terms.json",
+      "tags": ["game", "official"],
+      "author": "Brioche Masquée",
+      "lastUpdate": "2025-01-10"
     }
   ]
 }
