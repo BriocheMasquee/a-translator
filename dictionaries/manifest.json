@@ -5,7 +5,7 @@
   "dictionaries": [
     {
       "id": "fr-dict-v1",
-      "name": "DICO FR V1",
+      "name": "DICO FR OK",
       "description": "Le bon !",
       "lang": "fr",
       "dictVersion": "1.0",
@@ -18,7 +18,7 @@
     },
     {
       "id": "es-dict-v1",
-      "name": "FAUX dic es",
+      "name": "FAUX DIC ES",
       "description": "contient 3 entrées",
       "lang": "es",
       "dictVersion": "1.0",
@@ -31,7 +31,7 @@
     },
     {
       "id": "en-dict-v1",
-      "name": "FAUX dic EN",
+      "name": "FAUX DIC EN",
       "description": "contient 1 entrée",
       "lang": "en",
       "dictVersion": "1.0",
