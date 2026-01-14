@@ -1,12 +1,13 @@
 {
   "meta": {
     "lang": "es",
-    "dictVersion": "1.5",
+    "dictVersion": "1.6",
     "scriptVersion": "1.1.0"
   },
   "entries": {
     "universe": "Univers",
     "universes": "Univers",
-    "game": "Partie"
+    "game": "Partie",
+    "test": "test1"
   }
 }
