@@ -25,6 +25,14 @@
       "dictVersion": "1",
       "description": "Base interface translation.",
       "url": "https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/dictionaries/en-dict-v1.json"
+    },
+    {
+      "id": "test-core",
+      "name": "TEST — Core UI",
+      "lang": "test",
+      "dictVersion": "1",
+      "description": "Base interface translation.",
+      "url": "https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/dictionaries/test.json"
     }
   ]
 }
