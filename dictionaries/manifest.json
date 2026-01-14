@@ -1,46 +1,14 @@
 {
-  "schema": 1,
-  "repository": "BriocheMasquee/a-translator",
-  "lastUpdate": "2025-01-14T10:00:00Z",
+  "manifestVersion": "1",
+  "updatedAt": "2026-01-14T00:00:00.000Z",
   "dictionaries": [
     {
-      "id": "fr-dict-v1",
-      "name": "DICO FR OK2",
-      "description": "Le bon !???",
+      "id": "fr-core",
+      "name": "French — Core UI",
       "lang": "fr",
-      "dictVersion": "1.0",
-      "entries": 997,
-      "size": "12KB",
-      "url": "https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/dictionaries/fr-dict-v1.json",
-      "tags": ["ui", "official"],
-      "author": "Brioche Masquée",
-      "lastUpdate": "2025-01-13"
-    },
-    {
-      "id": "es-dict-v1",
-      "name": "FAUX DIC ES",
-      "description": "contient 3 entrées",
-      "lang": "es",
-      "dictVersion": "1.0",
-      "entries": 3,
-      "size": "7KB",
-      "url": "https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/dictionaries/es-dict-v1.json",
-      "tags": ["game", "official"],
-      "author": "Brioche Masquée",
-      "lastUpdate": "2025-01-10"
-    },
-    {
-      "id": "en-dict-v1",
-      "name": "FAUX DIC EN",
-      "description": "contient 1 entrée",
-      "lang": "en",
-      "dictVersion": "1.0",
-      "entries": 1,
-      "size": "7KB",
-      "url": "https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/dictionaries/en-dict-v1.json",
-      "tags": ["game", "official"],
-      "author": "Brioche Masquée",
-      "lastUpdate": "2025-01-10"
+      "dictVersion": "12",
+      "description": "Base interface translation.",
+      "url": "https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/dictionaries/fr-dict-v1.json"
     }
   ]
 }
