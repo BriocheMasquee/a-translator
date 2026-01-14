@@ -28,6 +28,19 @@
       "tags": ["game", "official"],
       "author": "Brioche Masquée",
       "lastUpdate": "2025-01-10"
+    },
+    {
+      "id": "en-dict-v1",
+      "name": "FAUX dic EN",
+      "description": "contient 1 entrée",
+      "lang": "en",
+      "dictVersion": "1.0",
+      "entries": 1,
+      "size": "7KB",
+      "url": "https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/dictionaries/en-dict-v1.json",
+      "tags": ["game", "official"],
+      "author": "Brioche Masquée",
+      "lastUpdate": "2025-01-10"
     }
   ]
 }
