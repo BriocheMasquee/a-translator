@@ -11,7 +11,7 @@
       "dictVersion": "1.2.0",
       "entries": 450,
       "size": "12KB",
-      "url": "https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/dictionaries/fr-dict-v1.json",
+      "url": "https://raw.githubusercontent.com/BriocheMasquee/a-translator/refs/heads/main/dictionaries/fr-dict-v1.json",
       "tags": ["ui", "official"],
       "author": "Brioche Masquée",
       "lastUpdate": "2025-01-13"
