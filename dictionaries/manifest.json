@@ -6,7 +6,7 @@
       "id": "fr-core",
       "name": "French — Core UI",
       "lang": "fr",
-      "dictVersion": "1.0",
+      "dictVersion": "1.1",
       "description": "Base interface translation.",
       "url": "https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/dictionaries/fr-dict-v1.json"
     },
