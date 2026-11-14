@@ -2,7 +2,7 @@
 
 Portuguese version [here](PTBR-README.md) (versão em português [aqui](PTBR-README.md)).
 
-# A-Translator v 2.0.0
+# A-Translator v 2.2.0
 
 Unofficial localization tool for _Alchemy VTT_.
 
