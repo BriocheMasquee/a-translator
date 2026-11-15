@@ -10,7 +10,7 @@
   ![Idiomas](https://img.shields.io/badge/idiomas-FR%20%7C%20ES%20%7C%20NL%20%7C%20PL%20%7C%20PT--BR-lightgrey)
   ![Licença: MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-blue)
 
-  [🇬🇧 English version](README.md)
+  🇬🇧 [English](README.md) · 🇫🇷 [Français](README.fr.md) · 🇪🇸 [Español](README.es.md) · 🇳🇱 [Nederlands](README.nl.md) · 🇵🇱 [Polski](README.pl.md) · **🇧🇷 Português (Brasil)**
 </div>
 
 > [!NOTE]
