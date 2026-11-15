@@ -1,0 +1,30 @@
+# Vérifie les dictionnaires, les modèles et le script à chaque publication (push sur main) ou pull request.
+# Une croix rouge apparaît sur le commit (onglet Actions) et GitHub envoie un e-mail si quelque chose est cassé.
+name: Valider les dictionnaires
+
+on:
+  push:
+    branches: [main]
+    paths: ["dictionaries/**", "models/**", "userscript/**", "tools/**", ".github/workflows/**"]
+  pull_request:
+    paths: ["dictionaries/**", "models/**", "userscript/**", "tools/**", ".github/workflows/**"]
+
+jobs:
+  valider:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Valider
+        run: |
+          BASE=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="origin/${{ github.base_ref }}"
+          elif [ "${{ github.event.before }}" != "0000000000000000000000000000000000000000" ]; then
+            BASE="${{ github.event.before }}"
+          fi
+          if [ -n "$BASE" ]; then node tools/valider-dictionnaires.mjs --base "$BASE"; else node tools/valider-dictionnaires.mjs; fi
