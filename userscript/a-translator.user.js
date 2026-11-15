@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         A-Translator
 // @namespace    https://github.com/BriocheMasquee
-// @version      2.2.0
+// @version      2.3.0
 // @description  Unofficial Alchemy VTT UI translator (dictionary-based)
 // @author       Brioche Masquée
 // @match        https://app.alchemyrpg.com/*
@@ -63,6 +63,8 @@
       mutatingText: new WeakSet(), // kept for compatibility, no longer used by the engine
       lastSetText: new WeakMap(),
       lastSetAttr: new WeakMap(), // el -> { attrName: lastValueWeWrote }
+      _phraseParents: new WeakSet(), // parents whose pieces are currently translated as one phrase
+      scoped: new Map(),
 
       // Pattern entries: dictionary keys containing {placeholders}, e.g.
       // "{n} dice rolled" = "{n} dés lancés". Compiled in loadDictFromStorage().
@@ -137,8 +139,83 @@
         }
       },
 
+      // Plural categories (zero / one / two / few / many / other) follow the language of the active core dictionary.
+      _setPluralLang(lang) {
+        let rules = null;
+        const tryLang = (l) => { try { return new Intl.PluralRules(l); } catch (_) { return null; } };
+        rules = tryLang(String(lang || "").replace(/_/g, "-")) || tryLang("en");
+        this.pluralLang = String(lang || "en");
+        this._plural = rules;
+      },
+
+      // English dates ("Apr 2026", "December 11, 2026", "11 Dec 2026") written in the language of the active core
+      // dictionary, formatted by the browser (Intl). Only a text that is entirely a date is converted, and only when
+      // that language is not English; nothing else is touched.
+      _translateDate(text) {
+        const lang = String(this.pluralLang || "en").replace(/_/g, "-");
+        if (!lang || /^en(-|$)/i.test(lang)) return null;
+        const str = String(text || "").trim();
+        if (str.length < 7 || str.length > 30 || !/\d{4}/.test(str)) return null;
+
+        const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+        const FULL = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+        const mon = "(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\\.?";
+        let m, month, day = null, year;
+        if ((m = new RegExp("^" + mon + "\\s+(\\d{4})$", "i").exec(str))) { month = m[1]; year = m[2]; }
+        else if ((m = new RegExp("^" + mon + "\\s+(\\d{1,2})(?:st|nd|rd|th)?,?\\s+(\\d{4})$", "i").exec(str))) { month = m[1]; day = m[2]; year = m[3]; }
+        else if ((m = new RegExp("^(\\d{1,2})(?:st|nd|rd|th)?\\s+" + mon + ",?\\s+(\\d{4})$", "i").exec(str))) { day = m[1]; month = m[2]; year = m[3]; }
+        else return null;
+
+        const idx = MONTHS.indexOf(month.slice(0, 3).toLowerCase());
+        const y = Number(year), d = day === null ? 1 : Number(day);
+        if (idx < 0 || y < 1900 || y > 2100 || d < 1 || d > 31) return null;
+        const date = new Date(Date.UTC(y, idx, d));
+        if (date.getUTCMonth() !== idx) return null; // e.g. "Feb 30, 2026"
+
+        const long = FULL.includes(month.replace(/\.$/, "").toLowerCase());
+        const opts = { timeZone: "UTC", year: "numeric", month: long ? "long" : "short" };
+        if (day !== null) opts.day = "numeric";
+        let out;
+        try {
+          const key = lang + "|" + JSON.stringify(opts);
+          this._dateFmt = this._dateFmt || new Map();
+          if (!this._dateFmt.has(key)) this._dateFmt.set(key, new Intl.DateTimeFormat(lang, opts));
+          out = this._dateFmt.get(key).format(date);
+        } catch (_) {
+          return null;
+        }
+        // The page shows capitals when the source did ("APR 2026").
+        if (!/[a-z]/.test(str)) out = out.toLocaleUpperCase(lang);
+        return out;
+      },
+
+      // English 12-hour times ("1:35 AM") in the clock format of the active core dictionary's language ("01:35").
+      _translateTime(text) {
+        const lang = String(this.pluralLang || "en").replace(/_/g, "-");
+        if (!lang || /^en(-|$)/i.test(lang)) return null;
+        const m = /^(\d{1,2}):(\d{2})\s?([AP])\.?M\.?$/i.exec(String(text || "").trim());
+        if (!m) return null;
+        let h = Number(m[1]);
+        const min = Number(m[2]);
+        if (h < 1 || h > 12 || min > 59) return null;
+        if (m[3].toUpperCase() === "P" && h !== 12) h += 12;
+        if (m[3].toUpperCase() === "A" && h === 12) h = 0;
+        try {
+          this._timeFmt = this._timeFmt || new Map();
+          if (!this._timeFmt.has(lang)) this._timeFmt.set(lang, new Intl.DateTimeFormat(lang, { timeZone: "UTC", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }));
+          return this._timeFmt.get(lang).format(new Date(Date.UTC(2000, 0, 1, h, min)));
+        } catch (_) {
+          return null;
+        }
+      },
+
+      _pluralCategory(n) {
+        try { return (this._plural || (this._setPluralLang("en"), this._plural)).select(n); } catch (_) { return "other"; }
+      },
+
       loadDictFromStorage() {
         let sourceDict = null;
+        let activeLang = "";
 
         try {
           const packs = loadDictionaryPacks();
@@ -150,8 +227,13 @@
               saveActivePackIds(normalizedActiveIds);
             }
             sourceDict = compileActiveDictionary(packs, normalizedActiveIds);
+            for (const id of normalizedActiveIds) {
+              const m = packs[id]?.meta;
+              if (m && String(m.type) === "core" && m.lang) { activeLang = String(m.lang); break; }
+            }
           }
         } catch (_) {}
+        this._setPluralLang(activeLang || "en");
 
         if (!sourceDict) {
           try {
@@ -169,7 +251,62 @@
 
         this.dict = next;
         this._compilePatterns(next);
+        this._compileScoped(next);
         return next.size;
+      },
+
+      // Context-dependent entries: "<text>||path=/roadmap" or "<text>||dialog=roadmap,within=votes". The same English text can
+      // then have another translation where the conditions hold. Conditions (all must hold):
+      //   path=<prefix>     the page path starts with it            dialog=<text>  the enclosing dialog's title contains it
+      //   within=<text>     an ancestor (up to 8 levels) contains it   tag=<name>    the element's tag name
+      // Without a matching condition (or without context) the plain entry is used.
+      _compileScoped(map) {
+        const scoped = new Map();
+        for (const [key, tpl] of map) {
+          const m = /^(.*?)\|\|((?:[a-z]+=[^,|]+)(?:,[a-z]+=[^,|]+)*)$/.exec(key);
+          if (!m) continue;
+          const base = m[1].trim();
+          if (!base) continue;
+          const conds = m[2].split(",").map((c) => { const i = c.indexOf("="); return { kind: c.slice(0, i), value: c.slice(i + 1).trim() }; });
+          if (!scoped.has(base)) scoped.set(base, []);
+          scoped.get(base).push({ conds, tpl: String(tpl) });
+        }
+        for (const list of scoped.values()) list.sort((a, b) => b.conds.length - a.conds.length);
+        this.scoped = scoped;
+      },
+
+      _matchesScope(conds, el) {
+        for (const c of conds) {
+          if (c.kind === "path") {
+            if (!location.pathname.toLowerCase().startsWith(c.value)) return false;
+          } else if (c.kind === "dialog") {
+            const dlg = el.closest?.('[role="dialog"]');
+            const title = dlg ? String(dlg.getAttribute("aria-label") || dlg.querySelector?.("h1,h2,[data-testid*='title'],[data-id*='title']")?.textContent || "").toLowerCase() : "";
+            if (!title.includes(c.value)) return false;
+          } else if (c.kind === "within") {
+            let ok = false, a = el;
+            for (let i = 0; i < 8 && a && a !== document.body; i++, a = a.parentElement) {
+              if (String(a.textContent || "").slice(0, 800).toLowerCase().includes(c.value)) { ok = true; break; }
+            }
+            if (!ok) return false;
+          } else if (c.kind === "tag") {
+            if (String(el.tagName || "").toLowerCase() !== c.value) return false;
+          } else {
+            return false; // unknown condition: never match
+          }
+        }
+        return true;
+      },
+
+      // What a translator needs to write a scoped key for an element.
+      contextOf(el) {
+        const dlg = el?.closest?.('[role="dialog"]');
+        return {
+          path: location.pathname,
+          dialog: dlg ? String(dlg.getAttribute("aria-label") || dlg.querySelector?.("h1,h2,[data-testid*='title'],[data-id*='title']")?.textContent || "").trim() : null,
+          tag: String(el?.tagName || "").toLowerCase(),
+          parentText: String(el?.parentElement?.textContent || "").trim().slice(0, 120)
+        };
       },
 
       _compilePatterns(map) {
@@ -177,8 +314,32 @@
         const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
         const pats = [];
 
+        // Plural variants of a pattern: extra keys "<pattern>|one", "<pattern>|few", "<pattern>|other"... The plain pattern
+        // stays the fallback (and the only form older script versions use: they never match the "|category" keys).
+        const PLURAL_KEY = /\|(zero|one|two|few|many|other)$/;
+        // Selector variants: "<pattern>|type=game" is used instead of the pattern when the variable {type} captured "game"
+        // (e.g. to agree an article or a gender: "we're working on this {type} now!|type=game").
+        const SELECTOR_KEY = /\|([A-Za-z0-9_]+)=([^|]+)$/;
+        const selectorsByBase = new Map();
+        for (const [key, tpl] of map) {
+          const sm = SELECTOR_KEY.exec(key);
+          if (!sm || key.includes("||")) continue;
+          const base = key.slice(0, -sm[0].length);
+          if (!selectorsByBase.has(base)) selectorsByBase.set(base, []);
+          selectorsByBase.get(base).push({ name: sm[1].toLowerCase(), value: sm[2].trim().toLowerCase(), tpl: String(tpl) });
+        }
+        const pluralsByBase = new Map();
+        for (const [key, tpl] of map) {
+          const pm = PLURAL_KEY.exec(key);
+          if (!pm) continue;
+          const base = key.slice(0, -pm[0].length);
+          if (!pluralsByBase.has(base)) pluralsByBase.set(base, {});
+          pluralsByBase.get(base)[pm[1]] = String(tpl);
+        }
+
         for (const [key, tpl] of map) {
           if (key.indexOf("{") === -1) continue;
+          if (PLURAL_KEY.test(key) || SELECTOR_KEY.test(key) || key.includes("||")) continue;
 
           const names = [];
           let source = "";
@@ -203,7 +364,15 @@
           if (literal.replace(/\s+/g, "").length < 3) continue;
 
           try {
-            pats.push({ re: new RegExp("^" + source + "$", "i"), names, tpl: String(tpl), len: literal.length });
+            pats.push({
+              re: new RegExp("^" + source + "$", "i"),
+              names,
+              tpl: String(tpl),
+              len: literal.length,
+              plurals: pluralsByBase.get(key) || null,
+              selectors: selectorsByBase.get(key) || null,
+              countIdx: names.indexOf("n") !== -1 ? names.indexOf("n") : names.length - 1
+            });
           } catch (_) {}
         }
 
@@ -218,11 +387,24 @@
           const m = p.re.exec(trimmed);
           if (!m) continue;
 
-          return p.tpl.replace(/\{([A-Za-z0-9_]+)\}/g, (all, name) => {
+          let tpl = p.tpl;
+          const plain = (i) => String(m[i + 1] || "").replace(/<\/?\d+>/g, "").trim();
+          let chosen = false;
+          if (p.selectors) {
+            for (const sel of p.selectors) {
+              const i = p.names.indexOf(sel.name);
+              if (i !== -1 && plain(i).toLowerCase() === sel.value) { tpl = sel.tpl; chosen = true; break; }
+            }
+          }
+          if (!chosen && p.plurals) {
+            const raw = plain(p.countIdx).replace(/[\s\u00A0,]/g, "");
+            if (/^-?\d+(\.\d+)?$/.test(raw)) tpl = p.plurals[this._pluralCategory(Number(raw))] || p.plurals.other || p.tpl;
+          }
+          return tpl.replace(/\{([A-Za-z0-9_]+)\}/g, (all, name) => {
             const i = p.names.indexOf(name.toLowerCase());
             if (i === -1) return all;
             const captured = m[i + 1];
-            const sub = this.dict.get(captured.trim().toLowerCase());
+            const sub = this.dict.get(captured.trim().toLowerCase()) || this._translateDate(captured);
             return sub || captured;
           });
         }
@@ -303,10 +485,15 @@
         return true;
       },
 
-      translateString(s) {
+      // `ctxEl` (optional): the element the text lives in, used by context-dependent entries ("text||path=...").
+      translateString(s, ctxEl) {
         const trimmed = s.trim();
         if (!trimmed) return null;
         const key = trimmed.toLowerCase();
+        if (ctxEl && this.scoped && this.scoped.size) {
+          const list = this.scoped.get(key);
+          if (list) for (const c of list) if (this._matchesScope(c.conds, ctxEl)) return s.replace(trimmed, () => c.tpl);
+        }
         // Replacer functions below: a plain string would interpret "$&", "$1"... in translations.
         const t = this.dict.get(key);
         if (t) return s.replace(trimmed, () => t);
@@ -328,6 +515,12 @@
 
         const byPattern = this._translateByPattern(trimmed);
         if (byPattern) return s.replace(trimmed, () => byPattern);
+
+        const byDate = this._translateDate(trimmed);
+        if (byDate) return s.replace(trimmed, () => byDate);
+
+        const byTime = this._translateTime(trimmed);
+        if (byTime) return s.replace(trimmed, () => byTime);
 
         return null;
       },
@@ -489,7 +682,7 @@
         const first = letters[0];
         const protectedText =
           this._isInEditableText(first) || this._isInChatUserMessage(first) || this._isInNotesItem(first);
-        const translated = protectedText ? null : this.translateString(origs.join(""));
+        const translated = protectedText ? null : this.translateString(origs.join(""), first.parentElement);
 
         letters.forEach((t, i) => {
           if (translated || this.textOrig.has(t)) {
@@ -501,6 +694,113 @@
         return true;
       },
 
+      // A sentence made of several pieces (React writes "We're working on this {type} now!" as three adjacent text nodes; a
+      // bold word or a link splits it too) is looked up as a whole: text nodes are written as is, each inline element
+      // (A, B, SPAN...) holding a single text becomes "<0>...</0>", "<1>...</1>" in order. A dictionary entry then
+      // translates the sentence with natural grammar, e.g.
+      //   "we're working on this <0>game</0> now!" = "Nous travaillons sur <0>ce jeu</0> !"
+      // The translation must keep the tags in the same order; without any tag it replaces the whole text.
+      // Returns true when the parent was translated as a phrase.
+      _translatePhrase(node, updateOrig, raw) {
+        const parent = node.parentElement;
+        if (!parent) return false;
+        const kids = parent.childNodes;
+        if (kids.length < 2 || kids.length > 24) return false;
+        const INLINE = this._inlineTags || (this._inlineTags = new Set(["A", "B", "I", "U", "S", "EM", "STRONG", "SPAN", "SMALL", "CODE", "MARK", "ABBR", "SUB", "SUP", "DEL", "INS", "TIME", "LABEL"]));
+
+        const parts = []; // { node, orig, kind: "text" | "elem" }
+        let words = 0, elems = 0;
+        for (const kid of kids) {
+          if (kid.nodeType === 3) {
+            const orig = kid === node && updateOrig ? raw : this.textOrig.has(kid) ? this.textOrig.get(kid) : kid.nodeValue;
+            if (orig && orig.trim()) words++;
+            parts.push({ node: kid, orig: orig || "", kind: "text" });
+          } else if (kid.nodeType === 1) {
+            if (!INLINE.has(kid.tagName) || kid.childNodes.length !== 1 || kid.firstChild.nodeType !== 3) return false;
+            const inner = kid.firstChild;
+            const orig = inner === node && updateOrig ? raw : this.textOrig.has(inner) ? this.textOrig.get(inner) : inner.nodeValue;
+            parts.push({ node: inner, orig: orig || "", kind: "elem", index: elems++ });
+          } else if (kid.nodeType !== 8) {
+            return false;
+          }
+        }
+        if (!words || parts.length < 2) return false;
+
+        // The same protections as for a single text node apply to the whole phrase.
+        for (const p of parts) {
+          if (this._isInEditableText(p.node) || this._isInChatUserMessage(p.node) || this._isInNotesItem(p.node) || this._isRecentUserValue(p.node)) return false;
+        }
+
+        const markup = parts.map((p) => (p.kind === "elem" ? `<${p.index}>${p.orig}</${p.index}>` : p.orig)).join("");
+        if (markup.length > 400) return false;
+        const out = this.translateString(markup, parent);
+
+        let assignment = null;
+        if (out && out !== markup) assignment = this._phraseAssignment(parts, out, elems);
+
+        if (!assignment) {
+          // Not (or no longer) a phrase: give the pieces back, they are translated one by one.
+          if (this._phraseParents.has(parent)) {
+            this._phraseParents.delete(parent);
+            for (const p of parts) {
+              if (this.textOrig.has(p.node) && !(p.node === node && updateOrig)) this.restoreTextNode(p.node);
+            }
+            for (const p of parts) if (p.node !== node) this._translateNodeOnly(p.node, false, p.node.nodeValue);
+          }
+          return false;
+        }
+
+        this._phraseParents.add(parent);
+        for (const p of parts) {
+          const value = assignment.get(p.node);
+          this.textOrig.set(p.node, p.orig);
+          this.touchedText.add(p.node);
+          this.setText(p.node, value === undefined ? p.orig : value);
+        }
+        return true;
+      },
+
+      // Maps each text node of the phrase to its new value, or null when the translation cannot be placed.
+      _phraseAssignment(parts, out, elems) {
+        const tagRe = /<(\d+)>([\s\S]*?)<\/\1>/g;
+        const segments = [];
+        const inner = [];
+        let last = 0, m;
+        while ((m = tagRe.exec(out))) {
+          segments.push(out.slice(last, m.index));
+          if (Number(m[1]) !== inner.length) return null; // tags must come in order 0, 1, 2...
+          inner.push(m[2]);
+          last = m.index + m[0].length;
+        }
+        segments.push(out.slice(last));
+        const map = new Map();
+
+        if (!inner.length) {
+          // No tag: the whole translation goes into the first text node, every other piece is emptied.
+          let first = true;
+          for (const p of parts) {
+            if (p.kind === "text" && first && p.orig.trim()) { map.set(p.node, out); first = false; }
+            else map.set(p.node, "");
+          }
+          return first ? null : map;
+        }
+        if (inner.length !== elems) return null;
+
+        // runs[j] = the text nodes between element j-1 and element j.
+        const runs = [[]];
+        for (const p of parts) {
+          if (p.kind === "text") runs[runs.length - 1].push(p);
+          else runs.push([]);
+        }
+        for (let j = 0; j < runs.length; j++) {
+          const seg = segments[j] ?? "";
+          if (!runs[j].length) { if (seg.trim()) return null; continue; }
+          runs[j].forEach((p, i) => map.set(p.node, i === 0 ? seg : ""));
+        }
+        for (const p of parts) if (p.kind === "elem") map.set(p.node, inner[p.index]);
+        return map;
+      },
+
       translateTextNode(node, updateOrig = false) {
         const raw = node.nodeValue;
        if (raw == null) return;
@@ -508,6 +808,11 @@
         const letterBox = this._splitBoxOf(node);
         if (letterBox && this._translateSplitGroup(letterBox, node, updateOrig, raw)) return;
 
+        if (this._translatePhrase(node, updateOrig, raw)) return;
+        this._translateNodeOnly(node, updateOrig, raw);
+      },
+
+      _translateNodeOnly(node, updateOrig, raw) {
         if (
          this._isInEditableText(node) ||
           this._isInChatUserMessage(node) ||
@@ -529,7 +834,7 @@
         let out = original;
         const norm = this._normUserText(original);
         if (!(norm && this.userTexts.has(norm) && !this.dict.has(norm))) {
-          const replaced = this.translateString(original);
+          const replaced = this.translateString(original, node.parentElement);
           if (replaced) out = replaced;
         }
 
@@ -572,7 +877,7 @@
           }
 
           const original = el.dataset[dk];
-          const replaced = this.translateString(original);
+          const replaced = this.translateString(original, el);
           const target = replaced ? replaced.trim() : original;
 
           if (v !== target) el.setAttribute(a, target);
@@ -1240,9 +1545,49 @@
     }
   }
 
+  // Keeps the floating button's label in the interface language (it is created before the dictionary may change).
+  const BUTTON_SHORTCUT_HINT = " (Alt+Shift+T)";
+  const BUTTON_POS_KEY = "__alchemy_translate_btn_pos__";
+  const BUTTON_DEFAULT_POS = { x: 70, y: 39 }; // right of the Alchemy menu button, top-left
+
+  function clampButtonPos(p) {
+    return {
+      x: Math.min(Math.max(0, p.x), Math.max(0, window.innerWidth - 56)),
+      y: Math.min(Math.max(0, p.y), Math.max(0, window.innerHeight - 40))
+    };
+  }
+  function loadButtonPos() {
+    try {
+      const v = JSON.parse(localStorage.getItem(BUTTON_POS_KEY));
+      if (v && Number.isFinite(v.x) && Number.isFinite(v.y)) return clampButtonPos(v);
+    } catch (_) {}
+    return clampButtonPos(BUTTON_DEFAULT_POS);
+  }
+  function saveButtonPos(p) {
+    try { localStorage.setItem(BUTTON_POS_KEY, JSON.stringify(p)); } catch (_) {}
+  }
+  function resetButtonPosition() {
+    try { localStorage.removeItem(BUTTON_POS_KEY); } catch (_) {}
+    const box = document.getElementById("alchemy-translate-buttons");
+    if (!box) return;
+    const p = loadButtonPos();
+    box.style.left = p.x + "px";
+    box.style.top = p.y + "px";
+  }
+
+  function refreshButtonLabel() {
+    const b = document.querySelector("#alchemy-translate-buttons button");
+    if (!b) return;
+    const label = t("Open A-Translator") + BUTTON_SHORTCUT_HINT;
+    b.setAttribute("aria-label", label);
+    const tip = b.querySelector("div");
+    if (tip) tip.textContent = label;
+  }
+
   function applyTranslations() {
     core.loadDictFromStorage();
     core.loadEnabledFromStorage();
+    refreshButtonLabel();
 
     if (!core.enabled) {
       core.scheduleApplyTouched();
@@ -1695,6 +2040,30 @@
     console.log("[A-Translator] dictionary reset.");
   }
 
+  // Interface language: English by default; when the active language dictionary translates a UI string
+  // (the keys are the English strings themselves), its translation is shown instead.
+  function t(s) {
+    try {
+      const r = core.translateString(String(s));
+      return r || String(s);
+    } catch (_) {
+      return String(s);
+    }
+  }
+  // Texts with a variable part. Their dictionary keys are prefixed with "a-translator: " so that they can never
+  // match (as patterns) a text of the Alchemy page itself.
+  function tf(template, vars) {
+    const fill = (str) => String(str).replace(/\{(\w+)\}/g, (m, k) => (vars && k in vars ? String(vars[k]) : m));
+    try {
+      const baseKey = ("a-translator: " + template).toLowerCase();
+      const count = vars && vars.n !== undefined ? Number(vars.n) : NaN;
+      const plural = Number.isFinite(count) ? core.dict.get(baseKey + "|" + core._pluralCategory(count)) : null;
+      const tr = plural || core.dict.get(baseKey);
+      if (tr) return fill(tr);
+    } catch (_) {}
+    return fill(template);
+  }
+
   function openEditor() {
     let textarea;
 
@@ -1746,7 +2115,7 @@
       "font:13px/1.4 -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;"
     );
 
-    function openConfirmDialog({ title = "Confirm action", message = "", confirmLabel = "Confirm", cancelLabel = "Cancel", danger = false } = {}) {
+    function openConfirmDialog({ title = t("Confirm action"), message = "", confirmLabel = t("Confirm"), cancelLabel = t("Cancel"), danger = false } = {}) {
       return new Promise((resolve) => {
         document.getElementById("a-translator-confirm-dialog")?.remove();
 
@@ -1887,7 +2256,7 @@
 
     const subtitle = document.createElement("div");
     subtitle.innerHTML =
-      "<a href='https://github.com/BriocheMasquee/a-translator' target='_blank' rel='noopener noreferrer' style='color:rgba(120,190,255,.92);text-decoration:none;font-weight:500;'>Join us on GitHub</a>";
+      "<a href='https://github.com/BriocheMasquee/a-translator' target='_blank' rel='noopener noreferrer' style='color:rgba(120,190,255,.92);text-decoration:none;font-weight:500;'>" + t("Join us on GitHub") + "</a>";
     subtitle.style.cssText = css(
       "font-size:10px;",
       "opacity:.58;",
@@ -1948,8 +2317,8 @@
       "padding:0;"
     );
 
-    const LABEL_ON = "Translations ON";
-    const LABEL_OFF = "Translations OFF";
+    const LABEL_ON = t("Translations ON");
+    const LABEL_OFF = t("Translations OFF");
 
     function syncToggleUI(on) {
       toggleLabel.textContent = on ? LABEL_ON : LABEL_OFF;
@@ -1989,7 +2358,7 @@
     );
 
     const dictLabel = document.createElement("div");
-    dictLabel.textContent = "Manage dictionary";
+    dictLabel.textContent = t("Manage dictionary");
     dictLabel.style.cssText = css(
       "font-size:13px;",
       "font-weight:700;",
@@ -2056,7 +2425,7 @@
     const legalNote = document.createElement("div");
     legalNote.innerHTML =
       "Alchemy is © 2025 Arboreal, LLC. All rights reserved<br>" +
-      "Community-driven Alchemy translator by La Brioche Masquée";
+      t("Community-driven Alchemy translator by La Brioche Masquée");
     legalNote.style.cssText = css(
       "width:100%;",
       "margin-top:auto;",
@@ -2092,7 +2461,7 @@
       "<path d='M13.5 6.5l4 4' stroke='currentColor' stroke-width='2' stroke-linecap='round'/>" +
       "</svg>";
 
-    const btnExport = makeDictionaryActionButton("Export active modules", EXPORT_SVG);
+    const btnExport = makeDictionaryActionButton(t("Export active modules"), EXPORT_SVG);
     btnExport.addEventListener("click", () => {
       const activeDraftEntries = Object.keys(draftPacks).length > 0
         ? compileActiveDictionary(draftPacks, draftActivePackIds)
@@ -2100,9 +2469,9 @@
       exportDict(activeDraftEntries, draftMeta);
     });
 
-    const btnImport = makeDictionaryActionButton("Import (local)", IMPORT_LOCAL_SVG);
+    const btnImport = makeDictionaryActionButton(t("Import (local)"), IMPORT_LOCAL_SVG);
 
-    const btnImportGithub = makeDictionaryActionButton("Import (GitHub)", IMPORT_GITHUB_SVG);
+    const btnImportGithub = makeDictionaryActionButton(t("Import (GitHub)"), IMPORT_GITHUB_SVG);
 
 
     async function loadGithubDictionaryDraft(url, sourceInfo = null) {
@@ -2190,10 +2559,10 @@
 
         if (!Array.isArray(dictionaries) || dictionaries.length === 0) {
           await openConfirmDialog({
-            title: "No dictionary found",
-            message: "No GitHub dictionary could be found.",
+            title: t("No dictionary found"),
+            message: t("No GitHub dictionary could be found."),
             confirmLabel: "OK",
-            cancelLabel: "Close"
+            cancelLabel: t("Close")
           });
           return;
         }
@@ -2260,7 +2629,7 @@
           );
 
           const itemTitle = document.createElement("span");
-          itemTitle.textContent = dict.label || dict.name || dict.id || "Dictionary";
+          itemTitle.textContent = dict.label || dict.name || dict.id || t("Dictionary");
           itemTitle.style.cssText = css(
             "font-size:12px;",
             "font-weight:600;",
@@ -2294,10 +2663,10 @@
             closeDropdown();
 
               const ok = await openConfirmDialog({
-                title: "Import GitHub dictionary",
-                message: dict.label || dict.name || dict.id || "Dictionary",
-                confirmLabel: "Import",
-                cancelLabel: "Cancel"
+                title: t("Import GitHub dictionary"),
+                message: dict.label || dict.name || dict.id || t("Dictionary"),
+                confirmLabel: t("Import"),
+                cancelLabel: t("Cancel")
               });
 
             if (!ok) return;
@@ -2307,10 +2676,10 @@
 
               if (!res || res.ok === false) {
                 await openConfirmDialog({
-                  title: "GitHub import failed",
-                  message: "The selected dictionary could not be imported. Check the console for details.",
+                  title: t("GitHub import failed"),
+                  message: t("The selected dictionary could not be imported. Check the console for details."),
                   confirmLabel: "OK",
-                  cancelLabel: "Close"
+                  cancelLabel: t("Close")
                 });
                 return;
               }
@@ -2347,10 +2716,10 @@
               console.error("[A-Translator] GitHub import error", err);
 
               await openConfirmDialog({
-                title: "GitHub import error",
+                title: t("GitHub import error"),
                 message: String(err && err.message ? err.message : err),
                 confirmLabel: "OK",
-                cancelLabel: "Close"
+                cancelLabel: t("Close")
               });
             }
           });
@@ -2362,10 +2731,10 @@
       } catch (e) {
         console.error("[A-Translator] GitHub import error", e);
         await openConfirmDialog({
-          title: "GitHub import error",
+          title: t("GitHub import error"),
           message: String(e && e.message ? e.message : e),
           confirmLabel: "OK",
-          cancelLabel: "Close"
+          cancelLabel: t("Close")
         });
       }
     }
@@ -2376,7 +2745,7 @@
       handleGithubImport();
     });
 
-    const btnEditDictionary = makeDictionaryActionButton("Edit current dictionary", EDIT_DICTIONARY_SVG);
+    const btnEditDictionary = makeDictionaryActionButton(t("Edit current dictionary"), EDIT_DICTIONARY_SVG);
 
     let dictionaryEditorVisible = false;
 
@@ -2393,8 +2762,8 @@
       const editButtonLabel = btnEditDictionary.querySelector("span:last-child");
       if (editButtonLabel) {
         editButtonLabel.textContent = dictionaryEditorVisible
-          ? "Close dictionary editor"
-          : "Edit current dictionary";
+          ? t("Close dictionary editor")
+          : t("Edit current dictionary");
       }
 
       if (dictionaryEditorVisible) {
@@ -2410,10 +2779,10 @@
       e.preventDefault();
 
       openConfirmDialog({
-        title: "Import local dictionary",
-        message: "Choose a local JSON dictionary module.",
-        confirmLabel: "Import",
-        cancelLabel: "Cancel"
+        title: t("Import local dictionary"),
+        message: t("Choose a local JSON dictionary module."),
+        confirmLabel: t("Import"),
+        cancelLabel: t("Cancel")
       }).then((ok) => {
         if (!ok) return;
 
@@ -2521,7 +2890,7 @@
         draftEnabled !== initialEnabled ||
         serializePackIds(draftActivePackIds) !== savedActivePackIdsSnapshot;
       if (typeof unsavedChangesLabel !== "undefined") {
-        unsavedChangesLabel.textContent = hasUnsavedChanges ? "Unsaved changes" : "";
+        unsavedChangesLabel.textContent = hasUnsavedChanges ? t("Unsaved changes") : "";
       }
       if (typeof btnSave !== "undefined") {
         btnSave.disabled = !hasUnsavedChanges;
@@ -2630,12 +2999,12 @@
       if (!file) return;
 
       try {
-        exportHint.textContent = "Importing…";
+        exportHint.textContent = t("Importing…");
         const text = await file.text();
         const res = loadLocalDictionaryDraft(text, importMode, { fileName: file.name });
 
         if (!res || res.ok === false) {
-          exportHint.textContent = "Import failed";
+          exportHint.textContent = t("Import failed");
           return;
         }
 
@@ -2668,11 +3037,11 @@
         refreshCurrentDictionaryInfo();
         setUnsavedChanges(true);
 
-        exportHint.textContent = "Imported " + res.count + " new entries (" + res.mode + ")";
+        exportHint.textContent = tf("Imported {n} new entries", { n: res.count }) + " (" + res.mode + ")";
         setTimeout(() => (exportHint.textContent = ""), 2500);
       } catch (e) {
         console.error("[A-Translator] import error", e);
-        exportHint.textContent = "Import error (see console)";
+        exportHint.textContent = t("Import error (see console)");
       } finally {
         importInput.value = "";
       }
@@ -2695,7 +3064,7 @@
     );
 
     const currentDictionaryTitle = document.createElement("div");
-    currentDictionaryTitle.textContent = "Dictionary stack";
+    currentDictionaryTitle.textContent = t("Dictionary stack");
     currentDictionaryTitle.style.cssText = css(
       "font-size:13px;",
       "font-weight:700;",
@@ -2734,7 +3103,7 @@
       const count = Number.isFinite(countOverride)
         ? countOverride
         : Object.keys(pack?.entries || {}).length;
-      const entriesLabel = count === 1 ? "1 entry" : count + " entries";
+      const entriesLabel = count === 1 ? t("1 entry") : tf("{n} entries", { n: count });
       return entriesLabel;
     }
 
@@ -2844,8 +3213,8 @@
         const hasUpdate = updateAvailablePackIds.has(packId);
         const statusHtml = active && supportsUpdateStatus
           ? hasUpdate
-            ? "<button type='button' class='at-pack-update' data-pack-id='" + escapeHtml(packId) + "' style='appearance:none;padding:0;margin:0;border:0;background:transparent;color:rgba(255,95,95,.95);font:inherit;font-size:9.5px;font-weight:800;line-height:1;cursor:pointer;text-transform:lowercase;'>update</button>"
-            : "<span style='font-size:9.5px;font-weight:600;color:rgba(255,255,255,.42);'>up to date</span>"
+            ? "<button type='button' class='at-pack-update' data-pack-id='" + escapeHtml(packId) + "' style='appearance:none;padding:0;margin:0;border:0;background:transparent;color:rgba(255,95,95,.95);font:inherit;font-size:9.5px;font-weight:800;line-height:1;cursor:pointer;text-transform:lowercase;'>" + t("update") + "</button>"
+            : "<span style='font-size:9.5px;font-weight:600;color:rgba(255,255,255,.42);'>" + t("up to date") + "</span>"
           : "";
         const entryCount = getEffectiveEntryCount({ id, pack });
         const secondaryHtml = type === "user"
@@ -2858,7 +3227,7 @@
         const toggleColor = active ? "rgba(95,220,140,.68)" : "rgba(255,255,255,.22)";
 
         return "<div class='at-pack-row' data-pack-id='" + escapeHtml(id) + "' style='display:grid;grid-template-columns:18px minmax(0,1fr) auto;column-gap:8px;align-items:center;width:100%;min-width:0;cursor:default;opacity:" + opacity + ";text-align:left;'>" +
-          "<button type='button' class='at-pack-toggle' aria-label='" + (active ? "Disable " : "Enable ") + escapeHtml(name) + "' style='appearance:none;padding:0;margin:0;width:16px;height:16px;border-radius:5px;border:1px solid " + toggleBorder + ";background:" + toggleBg + ";color:" + toggleColor + ";font-size:10px;font-weight:800;line-height:14px;display:inline-flex;align-items:center;justify-content:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.06);cursor:pointer;'>" + (active ? "&#10003;" : "") + "</button>" +
+          "<button type='button' class='at-pack-toggle' aria-label='" + escapeHtml(tf(active ? "Disable {name}" : "Enable {name}", { name })) + "' style='appearance:none;padding:0;margin:0;width:16px;height:16px;border-radius:5px;border:1px solid " + toggleBorder + ";background:" + toggleBg + ";color:" + toggleColor + ";font-size:10px;font-weight:800;line-height:14px;display:inline-flex;align-items:center;justify-content:center;box-shadow:inset 0 1px 0 rgba(255,255,255,.06);cursor:pointer;'>" + (active ? "&#10003;" : "") + "</button>" +
           "<span style='min-width:0;display:flex;align-items:baseline;justify-content:flex-start;gap:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left;'>" +
             "<span style='font-size:11.5px;font-weight:700;color:rgba(255,255,255,.92);overflow:hidden;text-overflow:ellipsis;text-align:left;'>" + escapeHtml(name) + "</span>" +
             "<span style='display:inline-flex;align-items:baseline;gap:5px;min-width:0;overflow:hidden;text-overflow:ellipsis;text-align:left;'>" + secondaryHtml + "</span>" +
@@ -2869,7 +3238,7 @@
 
       const renderSection = (config, items, emptyText) => {
         const infoButton = config.info
-          ? "<button type='button' class='at-section-info' data-info-title='" + escapeHtml(config.title) + "' data-info-text='" + escapeHtml(config.info) + "' aria-label='About " + escapeHtml(config.title) + "' style='appearance:none;padding:0;margin:0;width:13px;height:13px;border-radius:999px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.03);color:rgba(255,255,255,.50);font-size:8px;font-weight:800;line-height:11px;display:inline-flex;align-items:center;justify-content:center;cursor:help;position:absolute;right:0;top:50%;transform:translateY(-50%);'>?</button>"
+          ? "<button type='button' class='at-section-info' data-info-title='" + escapeHtml(config.title) + "' data-info-text='" + escapeHtml(config.info) + "' aria-label='" + escapeHtml(tf("About {title}", { title: config.title })) + "' style='appearance:none;padding:0;margin:0;width:13px;height:13px;border-radius:999px;border:1px solid rgba(255,255,255,.16);background:rgba(255,255,255,.03);color:rgba(255,255,255,.50);font-size:8px;font-weight:800;line-height:11px;display:inline-flex;align-items:center;justify-content:center;cursor:help;position:absolute;right:0;top:50%;transform:translateY(-50%);'>?</button>"
           : "";
         const titlePadding = config.info ? "18px" : "0";
         let body = "";
@@ -2917,10 +3286,10 @@
       };
 
       dictionaryPacksInfo.innerHTML =
-        renderSection({ title: "Language", type: "core", color: "#5fa2ff", bg: "rgba(65,140,255,.13)", badgeBg: "rgba(65,120,190,.55)", icon: icons.language, unavailableText: "No language available", info: "Base Alchemy UI translation for one language. Disable it to turn off the active translation stack." }, sortPackItems(languagePacks), "No active language") +
-        renderSection({ title: "Game systems", type: "system", color: "#b978ff", bg: "rgba(170,95,255,.13)", badgeBg: "rgba(115,70,160,.55)", icon: icons.system, unavailableText: "No system dictionary available", info: "Translations for the interface of a specific game system. It does not translate that system's rules or content." }, sortPackItems([...systemPacks, ...availableSystemPacks]), "No system dictionary active") +
-        renderSection({ title: "Custom packs", type: "custom", color: "#ff9440", bg: "rgba(255,145,65,.13)", badgeBg: "rgba(170,95,40,.55)", icon: icons.custom, unavailableText: "No custom pack available", info: "Optional add-on dictionaries for homebrew, table-specific vocabulary, or extra UI terms." }, sortPackItems([...customPacks, ...availableCustomPacks]), "No custom pack active") +
-        renderSection({ title: "User overrides", type: "user", color: "#48c879", bg: "rgba(70,190,110,.13)", badgeBg: "rgba(50,130,75,.55)", icon: icons.user, unavailableText: "No user overrides available", info: "Your personal edits. These entries are applied after other modules and can override them." }, sortPackItems([...userPacks, ...availableUserPacks]), "No user overrides");
+        renderSection({ title: t("Language"), type: "core", color: "#5fa2ff", bg: "rgba(65,140,255,.13)", badgeBg: "rgba(65,120,190,.55)", icon: icons.language, unavailableText: t("No language available"), info: t("Base Alchemy UI translation for one language. Disable it to turn off the active translation stack.") }, sortPackItems(languagePacks), t("No active language")) +
+        renderSection({ title: t("Game systems"), type: "system", color: "#b978ff", bg: "rgba(170,95,255,.13)", badgeBg: "rgba(115,70,160,.55)", icon: icons.system, unavailableText: t("No system dictionary available"), info: t("Translations for the interface of a specific game system. It does not translate that system's rules or content.") }, sortPackItems([...systemPacks, ...availableSystemPacks]), t("No system dictionary active")) +
+        renderSection({ title: t("Custom packs"), type: "custom", color: "#ff9440", bg: "rgba(255,145,65,.13)", badgeBg: "rgba(170,95,40,.55)", icon: icons.custom, unavailableText: t("No custom pack available"), info: t("Optional add-on dictionaries for homebrew, table-specific vocabulary, or extra UI terms.") }, sortPackItems([...customPacks, ...availableCustomPacks]), t("No custom pack active")) +
+        renderSection({ title: t("User overrides"), type: "user", color: "#48c879", bg: "rgba(70,190,110,.13)", badgeBg: "rgba(50,130,75,.55)", icon: icons.user, unavailableText: t("No user overrides available"), info: t("Your personal edits. These entries are applied after other modules and can override them.") }, sortPackItems([...userPacks, ...availableUserPacks]), t("No user overrides"));
 
       dictionaryPacksInfo.querySelectorAll(".at-section-info").forEach((button) => {
         const showInfo = () => {
@@ -3010,7 +3379,7 @@
     );
 
     const currentDictionaryStatus = document.createElement("div");
-    currentDictionaryStatus.textContent = "Status: Up to date";
+    currentDictionaryStatus.textContent = t("Status: Up to date");
     currentDictionaryStatus.style.cssText = css(
       "font-size:11px;",
       "line-height:1.25;",
@@ -3061,11 +3430,11 @@
       }
 
       if (candidates.length === 0) {
-        setCurrentDictionaryStatus("Status: Local dictionary", "rgba(255,255,255,.62)");
+        setCurrentDictionaryStatus(t("Status: Local dictionary"), "rgba(255,255,255,.62)");
         return;
       }
 
-      setCurrentDictionaryStatus("Status: Checking…", "rgba(120,190,255,.92)");
+      setCurrentDictionaryStatus(t("Status: Checking…"), "rgba(120,190,255,.92)");
 
       try {
         const dictionaries = await listGithubDictionaries();
@@ -3090,14 +3459,14 @@
 
         if (updateAvailablePackIds.size > 0) {
           renderDictionaryPacksInfo();
-          setCurrentDictionaryStatus("Status: Update available", "rgba(255,190,120,.95)");
+          setCurrentDictionaryStatus(t("Status: Update available"), "rgba(255,190,120,.95)");
         } else {
           renderDictionaryPacksInfo();
-          setCurrentDictionaryStatus("Status: Up to date", "rgba(120,210,150,.95)");
+          setCurrentDictionaryStatus(t("Status: Up to date"), "rgba(120,210,150,.95)");
         }
       } catch (e) {
         console.warn("[A-Translator] Version check failed", e);
-        setCurrentDictionaryStatus("Status: Check failed", "rgba(255,140,140,.95)");
+        setCurrentDictionaryStatus(t("Status: Check failed"), "rgba(255,140,140,.95)");
       }
     }
 
@@ -3106,12 +3475,12 @@
       if (!pendingDictionaryUpdate) return;
 
       const ok = await openConfirmDialog({
-        title: "Update module",
+        title: t("Update module"),
         message:
-          (pendingDictionaryUpdate.label || pendingDictionaryUpdate.name || pendingDictionaryUpdate.id || "Dictionary") +
-          "\n\nThis will update this module to the latest GitHub version.",
-        confirmLabel: "Update",
-        cancelLabel: "Cancel"
+          (pendingDictionaryUpdate.label || pendingDictionaryUpdate.name || pendingDictionaryUpdate.id || t("Dictionary")) +
+          "\n\n" + t("This will update this module to the latest GitHub version."),
+        confirmLabel: t("Update"),
+        cancelLabel: t("Cancel")
       });
 
       if (!ok) return;
@@ -3124,10 +3493,10 @@
 
         if (!res || res.ok === false) {
           await openConfirmDialog({
-            title: "Update failed",
-            message: "The dictionary could not be updated. Check the console for details.",
+            title: t("Update failed"),
+            message: t("The dictionary could not be updated. Check the console for details."),
             confirmLabel: "OK",
-            cancelLabel: "Close"
+            cancelLabel: t("Close")
           });
           return;
         }
@@ -3163,10 +3532,10 @@
       } catch (e) {
         console.error("[A-Translator] Dictionary update error", e);
         await openConfirmDialog({
-          title: "Update error",
+          title: t("Update error"),
           message: String(e && e.message ? e.message : e),
           confirmLabel: "OK",
-          cancelLabel: "Close"
+          cancelLabel: t("Close")
         });
       }
     }
@@ -3239,7 +3608,7 @@
     );
 
     const hint = document.createElement("div");
-    hint.textContent = "DICTIONARY EDITOR";
+    hint.textContent = t("DICTIONARY EDITOR");
     hint.style.cssText = css(
       "font-weight:600;",
       "font-size:12px;",
@@ -3261,7 +3630,7 @@
 
     const searchInput = document.createElement("input");
     searchInput.type = "search";
-    searchInput.placeholder = "Search…";
+    searchInput.placeholder = t("Search…");
     searchInput.autocomplete = "off";
     searchInput.spellcheck = false;
     searchInput.style.cssText = css(
@@ -3293,12 +3662,12 @@
       "margin:0;",
       "margin-top:-7px;"
     );
-    hintDescription.textContent = "One entry per line. Use the format: ";
+    hintDescription.textContent = t("One entry per line. Use the format: ");
     const em = document.createElement("em");
     em.textContent = "key = translation";
     hintDescription.append(em);
 
-    const btnFindCandidates = makePillButton("Find untranslated text", [
+    const btnFindCandidates = makePillButton(t("Find untranslated text"), [
       "grid-column:2;",
       "grid-row:2;",
       "justify-self:end;",
@@ -3308,7 +3677,7 @@
       "color:#eef6ff;"
     ]);
     btnFindCandidates.removeAttribute("title");
-    attachTooltip(btnFindCandidates, "Scan the current Alchemy screen", "top");
+    attachTooltip(btnFindCandidates, t("Scan the current Alchemy screen"), "top");
     hoverBg(btnFindCandidates, "rgba(65,120,190,.45)", "rgba(75,145,220,.72)");
 
     funcBlock.append(titleWrap, searchInput, hintDescription, btnFindCandidates);
@@ -3339,7 +3708,7 @@
 
     function updateEntryCount() {
       const count = Object.keys(draftDict || {}).length;
-      entryCountLabel.textContent = count + " entries";
+      entryCountLabel.textContent = count === 1 ? t("1 entry") : tf("{n} entries", { n: count });
     }
 
     function renderTextarea() {
@@ -3452,9 +3821,9 @@
         candidateMode = false;
         filterQuery = "";
         searchInput.value = "";
-        searchInput.placeholder = "Search…";
-        btnFindCandidates.firstChild.nodeValue = "Find untranslated text";
-        hintDescription.firstChild.textContent = "One entry per line. Use the format: ";
+        searchInput.placeholder = t("Search…");
+        btnFindCandidates.firstChild.nodeValue = t("Find untranslated text");
+        hintDescription.firstChild.textContent = t("One entry per line. Use the format: ");
         em.style.display = "";
         renderTextarea();
         return;
@@ -3464,12 +3833,12 @@
       candidateMode = true;
       filterQuery = "";
       searchInput.value = "";
-      searchInput.placeholder = "Filter candidates…";
-      btnFindCandidates.firstChild.nodeValue = "Back to dictionary";
+      searchInput.placeholder = t("Filter candidates…");
+      btnFindCandidates.firstChild.nodeValue = t("Back to dictionary");
       em.style.display = "none";
       hintDescription.firstChild.textContent = pageCandidates.length
-        ? "Complete only the translations you want to add."
-        : "No untranslated text was found on the current screen.";
+        ? t("Complete only the translations you want to add.")
+        : t("No untranslated text was found on the current screen.");
       renderTextarea();
       textarea.focus();
     });
@@ -3524,25 +3893,25 @@
       "gap:10px;"
     );
 
-    const btnClose = makePillButton("Cancel", [
+    const btnClose = makePillButton(t("Cancel"), [
       "padding:6px 12px;",
       "background:#1b1b1b;",
       "color:#eee;"
     ]);
 
-    const btnSave = makePillButton("Save", [
+    const btnSave = makePillButton(t("Save"), [
       "background:rgba(40,120,70,.55);",
       "color:#fff;",
       "font-weight:600;"
     ]);
     btnSave.removeAttribute("title");
-    attachTooltip(btnSave, "Save and close", "top");
+    attachTooltip(btnSave, t("Save and close"), "top");
     hoverBg(btnSave, "rgba(40,120,70,.55)", "rgba(70,170,110,.9)");
     btnSave.disabled = true;
     btnSave.style.opacity = ".45";
     btnSave.style.cursor = "default";
 
-    const btnResetDictionary = makePillButton("Delete all modules", [
+    const btnResetDictionary = makePillButton(t("Delete all modules"), [
       "background:rgba(120,40,40,.55);",
       "color:#f3f3f3;",
       "font-weight:500;"
@@ -3552,10 +3921,10 @@
 
     btnResetDictionary.addEventListener("click", () => {
       openConfirmDialog({
-        title: "Delete all modules",
-        message: "This will delete every stored dictionary module and all dictionary metadata. A-Translator will remain installed.",
-        confirmLabel: "Delete all",
-        cancelLabel: "Cancel",
+        title: t("Delete all modules"),
+        message: t("This will delete every stored dictionary module and all dictionary metadata. A-Translator will remain installed."),
+        confirmLabel: t("Delete all"),
+        cancelLabel: t("Cancel"),
         danger: true
       }).then((ok) => {
         if (!ok) return;
@@ -3601,10 +3970,10 @@
       }
 
       const ok = await openConfirmDialog({
-        title: "Discard changes?",
-        message: "You have unsaved changes. Close the editor without saving?",
-        confirmLabel: "Discard",
-        cancelLabel: "Cancel",
+        title: t("Discard changes?"),
+        message: t("You have unsaved changes. Close the editor without saving?"),
+        confirmLabel: t("Discard"),
+        cancelLabel: t("Cancel"),
         danger: true
       });
 
@@ -3721,7 +4090,7 @@ btnSave.addEventListener("click", () => {
     box.id = "alchemy-translate-buttons";
 
     box.style.cssText = css(
-      "position:fixed;left:30px;top:80px;width:56px;",
+      "position:fixed;left:" + loadButtonPos().x + "px;top:" + loadButtonPos().y + "px;width:56px;",
       "z-index:2147483647;display:flex;flex-direction:column;gap:6px;align-items:center;"
     );
 
@@ -3765,6 +4134,9 @@ btnSave.addEventListener("click", () => {
       );
 
       const show = () => {
+        const onRight = box.offsetLeft + 28 > window.innerWidth / 2;
+        tip.style.left = onRight ? "auto" : "calc(100% + 10px)";
+        tip.style.right = onRight ? "calc(100% + 10px)" : "auto";
         tip.style.visibility = "visible";
         tip.style.opacity = "1";
         tip.style.transform = "translateY(-50%) translateX(2px)";
@@ -3796,8 +4168,105 @@ btnSave.addEventListener("click", () => {
       "<path d='M7 7h10M7 17h10' stroke='currentColor' stroke-width='1.8' stroke-linecap='round'/>" +
       "</svg>";
 
-    const bTranslations = mkIconBtn("Open A-Translator", TRANSLATE_SVG);
-    bTranslations.addEventListener("click", openEditor);
+    const bTranslations = mkIconBtn(t("Open A-Translator") + BUTTON_SHORTCUT_HINT, TRANSLATE_SVG);
+
+    // Drag the button anywhere (position remembered); a short click still opens the editor.
+    let drag = null;
+    let justDragged = false;
+    bTranslations.style.touchAction = "none";
+    bTranslations.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      drag = { sx: e.clientX, sy: e.clientY, bx: box.offsetLeft, by: box.offsetTop, moved: false };
+      try { bTranslations.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+    bTranslations.addEventListener("pointermove", (e) => {
+      if (!drag) return;
+      const dx = e.clientX - drag.sx;
+      const dy = e.clientY - drag.sy;
+      if (!drag.moved && Math.hypot(dx, dy) < 5) return;
+      drag.moved = true;
+      const p = clampButtonPos({ x: drag.bx + dx, y: drag.by + dy });
+      box.style.left = p.x + "px";
+      box.style.top = p.y + "px";
+      bTranslations.style.cursor = "grabbing";
+    });
+    const endDrag = () => {
+      if (!drag) return;
+      if (drag.moved) {
+        justDragged = true;
+        setTimeout(() => (justDragged = false), 60);
+        saveButtonPos({ x: box.offsetLeft, y: box.offsetTop });
+      }
+      drag = null;
+      bTranslations.style.cursor = "pointer";
+    };
+    bTranslations.addEventListener("pointerup", endDrag);
+    bTranslations.addEventListener("pointercancel", endDrag);
+    bTranslations.addEventListener("click", () => {
+      if (justDragged) return;
+      openEditor();
+    });
+    window.addEventListener("resize", () => {
+      const p = clampButtonPos({ x: box.offsetLeft, y: box.offsetTop });
+      box.style.left = p.x + "px";
+      box.style.top = p.y + "px";
+    });
+    // Keyboard shortcut (works even if the button is hidden behind something): Alt+Shift+T.
+    window.addEventListener(
+      "keydown",
+      (e) => {
+        if (e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && e.code === "KeyT") {
+          e.preventDefault();
+          e.stopPropagation();
+          openEditor();
+        }
+      },
+      true
+    );
+
+    // Context picker (Alt+Shift+C): click any text to copy its context (text, page, ancestors) to the clipboard, to write scoped entries.
+    let picking = false, pickToast = null;
+    const say = (msg, ms) => {
+      if (!pickToast) {
+        pickToast = document.createElement("div");
+        pickToast.setAttribute("data-atx-ui", "1");
+        pickToast.style.cssText = "position:fixed;z-index:2147483647;left:50%;bottom:24px;transform:translateX(-50%);max-width:80vw;padding:10px 14px;border-radius:10px;background:#111;color:#fff;font:13px system-ui;box-shadow:0 4px 16px #0008;white-space:pre-wrap";
+        document.documentElement.appendChild(pickToast);
+      }
+      pickToast.textContent = msg;
+      pickToast.style.display = "block";
+      clearTimeout(pickToast._t);
+      if (ms) pickToast._t = setTimeout(() => { pickToast.style.display = "none"; }, ms);
+    };
+    const stopPicking = () => { picking = false; document.documentElement.style.cursor = ""; if (pickToast) pickToast.style.display = "none"; };
+    const pickClick = (e) => {
+      if (!picking) return;
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+      const el = e.target;
+      const ctx = core.contextOf(el);
+      const chain = [];
+      for (let n = el, i = 0; n && n.nodeType === 1 && i < 6; n = n.parentElement, i++) {
+        chain.push(n.tagName.toLowerCase() + (n.getAttribute("role") ? `[role=${n.getAttribute("role")}]` : "") + (n.getAttribute("data-testid") ? `[data-testid=${n.getAttribute("data-testid")}]` : "") + (n.getAttribute("aria-label") ? `[aria-label=${n.getAttribute("aria-label")}]` : ""));
+      }
+      const info = JSON.stringify({ text: String(el.textContent || "").trim().slice(0, 120), ...ctx, chain }, null, 1);
+      stopPicking();
+      const done = (ok) => say(ok ? t("Context copied to the clipboard: paste it in the chat.") : t("Copy failed: select the text below.") + "\n" + info, ok ? 4000 : 20000);
+      try { navigator.clipboard.writeText(info).then(() => done(true), () => done(false)); } catch (_) { done(false); }
+    };
+    document.addEventListener("click", pickClick, true);
+    window.addEventListener(
+      "keydown",
+      (e) => {
+        if (e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && e.code === "KeyC") {
+          e.preventDefault(); e.stopPropagation();
+          if (picking) { stopPicking(); return; }
+          picking = true;
+          document.documentElement.style.cursor = "crosshair";
+          say(t("Context picker: click the text to inspect (Alt+Shift+C or Esc to cancel)."));
+        } else if (picking && e.key === "Escape") { stopPicking(); }
+      },
+      true
+    );
 
     box.append(bTranslations);
     document.documentElement.appendChild(box);
@@ -3809,7 +4278,9 @@ btnSave.addEventListener("click", () => {
     debug: getDebugState,
     inspect: inspectPageText,
     findPotentialTranslations,
-    apply: applyTranslations
+    apply: applyTranslations,
+    context: (el) => core.contextOf(el),
+    resetButtonPosition
   };
   mountButtons();
 })();
