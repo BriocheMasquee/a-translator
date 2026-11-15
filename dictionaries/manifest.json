@@ -1,13 +1,13 @@
 {
   "manifestVersion": "2.5",
-  "updatedAt": "2026-11-15T00:00:00.000Z",
+  "updatedAt": "2026-11-15T12:00:00.000Z",
   "dictionaries": [
     {
       "id": "fr-core",
       "name": "French — Core UI",
       "lang": "fr",
       "type": "core",
-      "dictVersion": "4.0",
+      "dictVersion": "4.1",
       "url": "https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/dictionaries/fr-core.json"
     },
     {
@@ -15,7 +15,7 @@
       "name": "Spanish — Core UI",
       "lang": "es",
       "type": "core",
-      "dictVersion": "4.0",
+      "dictVersion": "4.1",
       "url": "https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/dictionaries/es-core.json"
     },
     {
@@ -23,7 +23,7 @@
       "name": "Polish — Core UI",
       "lang": "pl",
       "type": "core",
-      "dictVersion": "4.0",
+      "dictVersion": "4.1",
       "url": "https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/dictionaries/pl-core.json"
     },
     {
@@ -31,7 +31,7 @@
       "name": "Brazilian portuguese - Core UI",
       "lang": "pt-br",
       "type": "core",
-      "dictVersion": "4.0",
+      "dictVersion": "4.1",
       "url": "https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/dictionaries/pt_br-core.json"
     },
     {
@@ -39,7 +39,7 @@
       "name": "Dutch - Core UI",
       "lang": "nl",
       "type": "core",
-      "dictVersion": "4.0",
+      "dictVersion": "4.1",
       "url": "https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/dictionaries/nl-core.json"
     },
     {
