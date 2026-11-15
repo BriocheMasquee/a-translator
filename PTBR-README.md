@@ -1,171 +1,175 @@
-# A-Translator v 2.0.0
+<div align="center">
+  <img src="assets/a-translator-icon-256.png" alt="Logotipo do A-Translator" width="128">
 
-Ferramenta de localização não oficial para o _Alchemy VTT_.
+  # A-Translator
 
-A-Translator possibilita jogadores e mestres traduzirem a interface do _Alchemy VTT_ e terminologia de sistemas de jogo usando dicionários modulares guardados inteiramente em seus próprios computadores. Todas as traduções são aplicadas localmente no navegador. Nenhuma informação é enviado para outro lugar.
+  Ferramenta de localização comunitária e não oficial para o [Alchemy VTT](https://alchemyrpg.com)
 
-![Interface do A-Translator](assets/a-translator-ui-v2.0.png)
+  ![Versão](https://img.shields.io/badge/vers%C3%A3o-2.3.0-blue)
+  ![Alchemy](https://img.shields.io/badge/testado%20com%20Alchemy-1.45.0-green)
+  ![Idiomas](https://img.shields.io/badge/idiomas-FR%20%7C%20ES%20%7C%20NL%20%7C%20PL%20%7C%20PT--BR-lightgrey)
+  ![Licença: MIT](https://img.shields.io/badge/licen%C3%A7a-MIT-blue)
 
----
+  [🇬🇧 English version](README.md)
+</div>
 
-# O que é A-Translator?
+> [!NOTE]
+> O A-Translator é um projeto comunitário não oficial. Não é afiliado à Arboreal, LLC. Tudo acontece localmente no seu navegador: os dicionários ficam guardados no seu próprio computador e **nenhum dado é enviado para lugar nenhum**.
 
-A-Translator é um _Tampermonkey userscript_ que traduz a interface do _Alchemy VTT_ usando dicionários mantidos pela comunidade.
+## Índice
 
-Versão 2 introduz uma arquitetura modular onde múltiplos dicionários podem coexistir:
-- Core UI dictionaries (Dicionários da Interface principal)
-- System dictionaries (Dicionários de sistemas)
-- Custom dictionaries (Dicionários personalizados)
-- User overrides (Substituições do usuário)
+- [O que é o A-Translator?](#o-que-é-o-a-translator)
+- [O que o A-Translator não é](#o-que-o-a-translator-não-é)
+- [Instalação](#instalação)
+- [Uso](#uso)
+- [Dicionários disponíveis](#dicionários-disponíveis)
+- [Tipos e formato de dicionário](#tipos-e-formato-de-dicionário)
+- [Atualizações](#atualizações)
+- [Contribuições](#contribuições)
+- [Redefinição](#redefinição)
+- [Isenção de responsabilidade e licença](#isenção-de-responsabilidade-e-licença)
 
----
+## O que é o A-Translator?
 
-# O que A-Translator não é
+O A-Translator é um userscript do [Tampermonkey](https://www.tampermonkey.net/) que traduz a interface do *Alchemy VTT* e a terminologia dos sistemas de jogo, usando dicionários mantidos pela comunidade. Jogadores e mestres podem escolher cada um o seu idioma, sem esperar por uma tradução oficial.
 
-A-Translator:
+![Interface do A-Translator](assets/a-translator-ui-v2.3.png)
 
-- Não é uma funcionalidade oficial do Alchemy
-- Não é afiliada com o Arboreal, LLC
-- Não modifica os servidores Alchemy
-- Não modifica ou desbloqueia conteúdos de jogo
-- Não acessa os dados de sua conta
-- Não envia dados para qualquer outro lugar
+Vários dicionários podem coexistir e são aplicados em camadas:
 
----
+| Camada | Finalidade |
+|---|---|
+| **Idioma** | Tradução da interface do Alchemy (dicionário core) |
+| **Sistemas de jogo** | Terminologia de um sistema de jogo (por exemplo, D&D 5E) |
+| **Pacotes personalizados** | Extensões opcionais da comunidade |
+| **Substituições do usuário** | Suas próprias correções, sempre aplicadas primeiro |
 
-# Instalação
+A interface do próprio A-Translator segue o idioma do dicionário core ativo. Por padrão, ela fica em inglês.
 
-## 1. Instale Tampermonkey
+## O que o A-Translator não é
 
-https://www.tampermonkey.net/
+- Não é uma funcionalidade oficial do Alchemy.
+- Não é afiliado à Arboreal, LLC.
+- Não modifica os servidores do Alchemy.
+- Não modifica nem desbloqueia conteúdos de jogo.
+- Não acessa os dados da sua conta.
+- Não envia dados para lugar nenhum.
 
-## 2. Configure Tampermonkey
+## Instalação
+
+### 1. Instale o Tampermonkey
+
+Baixe-o em [tampermonkey.net](https://www.tampermonkey.net/).
+
+### 2. Configure o Tampermonkey
 
 Configurações recomendadas:
+
 - Ative o Modo Desenvolvedor
-- Ative Scripts de Usuário
-- Habilite acesso a arquivos de URLs
-- Habilite scripts na navegação privada/incógnita do windows
+- Ative os Scripts de Usuário
+- Permita o acesso a URLs de arquivos
+- Permita scripts em janelas privadas/anônimas
 
-## 3. Instale A-Translator
+### 3. Instale o A-Translator
 
-Obtenha o arquivo abaixo, abra-o em qualquer programa de edição de texto e copie o seu conteúdo:
+1. Abra o [arquivo do script](https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/userscript/a-translator.user.js) e copie todo o seu conteúdo.
+2. Clique na extensão do Tampermonkey e depois em **Add new script…** (Adicionar novo script).
+3. Substitua o conteúdo padrão pelo script copiado e salve (File ▸ Save, ou <kbd>Ctrl</kbd>+<kbd>S</kbd> / <kbd>⌘</kbd>+<kbd>S</kbd>).
 
-https://raw.githubusercontent.com/BriocheMasquee/a-translator/main/userscript/a-translator.user.js 
+As próximas atualizações do script são feitas automaticamente pelo Tampermonkey.
 
-Ou então acesse este link e copie o seu conteúdo:
+## Uso
 
-https://github.com/BriocheMasquee/a-translator/blob/main/userscript/a-translator.user.js
+Abra [app.alchemyrpg.com](https://app.alchemyrpg.com). Um botão com um globo aparece ao lado do botão de menu do Alchemy: clique nele para abrir o A-Translator. Se não o encontrar, recarregue a página.
 
-Clique na extensão do Tampermonkey, clique em "Add new script..." e substitua o conteúdo pelo o que foi copiado acima. Então vá na aba file e então save (ou pressione ctrl + s).
+![Localização do A-Translator](assets/a-translator-location.png)
 
-Futuras atualizações do script são feitas automaticamente.
+- Você pode arrastar o botão para onde quiser; a posição é lembrada.
+- <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>T</kbd> (Option+Shift+T no macOS, Alt+Shift+T no Windows e no Linux) abre o editor, mesmo que o botão esteja fora de alcance.
 
----
+Na janela do A-Translator, você pode:
 
-# Uso
+- Importar dicionários do GitHub ou de arquivos locais
+- Ativar ou desativar módulos
+- Exportar os módulos ativos
+- Editar suas substituições pessoais
+- Atualizar os dicionários instalados
 
-Abra https://app.alchemyrpg.com 
+**Seletor de contexto.** <kbd>⌥</kbd> <kbd>⇧</kbd> <kbd>C</kbd> (Alt+Shift+C no Windows e no Linux) e depois clique em qualquer texto da página: o contexto dele (texto, página, elementos pai) é copiado para a área de transferência. É o que quem traduz precisa para escrever uma entrada que depende da página em que uma palavra aparece.
 
-Abaixo do logotipo no parte superior esquerda da página você conseguirá ver um ícone de um globo para abrir o A-Translator, clique nele (caso não o encontre, por favor, recarregue a página).
+## Dicionários disponíveis
 
-![localizaçãod do A-Translator](assets/a-translator-location.png)
+| Dicionário | Tipo | Versão |
+|---|---|---|
+| Francês — Core UI | core | 4.1 |
+| Espanhol — Core UI | core | 4.1 |
+| Holandês — Core UI | core | 4.1 |
+| Polonês — Core UI | core | 4.1 |
+| Português do Brasil — Core UI | core | 4.1 |
+| Francês — D&D 5E | system | 2.0 |
 
-Você pode:
-- Import local dictionaries (Importar de dicionários locais)
-- Import GitHub dictionaries (Importar de dicionários do GitHub)
-- Enable or disable modules (Habilitar ou desabilitar módulos)
-- Export active modules (Exportar módulos ativos)
-- Edit personal overrides (Editar substituições pessoais)
-- Update installed dictionaries (Atualizar dicionários instalados)
+O dicionário francês é a referência. Os dicionários em espanhol, holandês, polonês e português do Brasil foram redigidos automaticamente a partir dele e **aguardam revisão por falantes nativos**: correções são muito bem-vindas (veja [Contribuições](#contribuições)).
 
----
+A lista dos dicionários oficiais está descrita em [`dictionaries/manifest.json`](dictionaries/manifest.json).
 
-# Tipos de Dicionário
+## Tipos e formato de dicionário
 
-| Tipo | Propósito |
-|--------|----------|
+| Tipo | Finalidade |
+|---|---|
 | core | Tradução da interface do Alchemy |
-| system | Terminologias do sistema de jogo |
-| custom | Extensões da comunidade opcionais |
+| system | Terminologia do sistema de jogo |
+| custom | Extensões opcionais da comunidade |
 | user | Substituições pessoais |
 
-Múltiplos dicionários de sistema podem coexistir simultaneamente. Substituições pessoais do usuário sempre terão prioridade.
+Vários dicionários de sistema podem estar ativos ao mesmo tempo. As substituições do usuário sempre têm prioridade.
 
----
-
-# Formato do Dicionário
+Um dicionário é um arquivo JSON. As chaves são os textos em inglês, exatamente como o Alchemy os exibe:
 
 ```json
 {
   "meta": {
-      "id": "fr-core",
-      "name": "French UI",
-      "lang": "fr",
-      "type": "core", // tipos suportados : core, system, custom, user
-      "dictVersion": "2.0"
+    "id": "fr-core",
+    "name": "French - Core UI",
+    "lang": "fr",
+    "type": "core",
+    "dictVersion": "4.1"
   },
   "entries": {
-      "game": "Partie",
-      "character": "Personnage"
+    "game": "Partie",
+    "character": "Personnage"
   }
 }
-``` 
+```
 
----
+As entradas também podem conter `{variáveis}` (`"{n} dice rolled"`), variantes de plural (`"{n} comments|one"`, `|few`, `|many`, `|other`) e variantes que dependem do contexto. Veja o [changelog](CHANGELOG.md) (em inglês) para os detalhes de cada recurso. Datas e horas em formato de 12 horas escritas em inglês são exibidas no idioma do dicionário core ativo.
 
-# Dicionários do GitHub
+## Atualizações
 
-Dicionários oficiais podem ser distribuídos através do GitHub.
+O A-Translator pode descobrir os dicionários oficiais no GitHub, importá-los, detectar novas versões e atualizar cada módulo individualmente. Um dicionário só é atualizado quando o seu `dictVersion` aumenta.
 
-A-Translator pode:
-- Achar os dicionários disponíveis
-- Importar dicionários diretamente do GitHub
-- Detectar atualizações
-- Atualizar módulos individuais
+Compatibilidade: a versão 2.3.0 foi testada com o Alchemy 1.45.0. Atualizações do Alchemy podem alterar alguns textos; os dicionários são atualizados em consequência.
 
----
+As instalações da Versão 1 são migradas automaticamente, sem nenhuma conversão manual.
 
-# Migração da Versão 1
+## Contribuições
 
-Instalações existentes da Versão 1 são migradas automaticamente. Nenhuma conversão manual é necessária.
+As contribuições são bem-vindas:
 
----
+- Revisões e correções dos dicionários em espanhol, holandês, polonês e português do Brasil
+- Novas traduções core: copie [`models/XX-core.json`](models/XX-core.json), que contém todas as chaves a traduzir, e preencha os valores (mantenha as chaves inalteradas, espaços inclusive)
+- Dicionários de sistemas de jogo (veja [`models/XX-dd5.json`](models/XX-dd5.json))
+- Documentação
 
-# Contribuições da Comunidade
+Quando um dicionário é alterado, aumente o seu `dictVersion` (no arquivo **e** no `manifest.json`); caso contrário, os usuários não receberão a atualização. Um fluxo de validação ([`tools/valider-dictionnaires.mjs`](tools/valider-dictionnaires.mjs)) verifica os dicionários, os modelos e o script a cada push e pull request.
 
-Contribuições da comunidade são bem-vindas.
+Repositório: https://github.com/BriocheMasquee/a-translator
 
-Você pode contribuir com:
-- Core UI translations (Traduções da Interface principal)
-- System dictionaries (Dicionários de sistema)
-- Translation improvements (Melhorias nas traduções)
-- Documentation (Documentação)
+## Redefinição
 
-Repositório: https://github.com/BriocheMasquee/a-translator 
+**Delete all modules** (Apagar todos os módulos) remove os dicionários instalados, as substituições do usuário e as configurações de tradução. O userscript em si continua instalado.
 
----
+## Isenção de responsabilidade e licença
 
-# Resetar
+*Alchemy* é © Arboreal, LLC. O A-Translator é um projeto comunitário não oficial e não é afiliado à Arboreal, LLC.
 
-Apagar todos os módulos (botão "Delete all modules") remove:
-
-- Dicionários instalados
-- Substituições do usuário
-- Configurações de tradução
-
-O userscript em si permanece instaldo.
-
----
-
-# Isenção de responsabilidade
-
-_Alchemy_ é do © _Arboreal, LLC_.
-
-A-Translator é um projeto comunitário não oficial e não é afiliado ao _Arboreal, LLC_.
-
----
-
-# Licença
-
-MIT License
+Distribuído sob a [Licença MIT](LICENSE).
