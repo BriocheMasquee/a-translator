@@ -2294,9 +2294,9 @@
     "your vote has been cast for this feature!": "Twój głos na tę funkcję został oddany!",
     "your vote has been cast for this game!": "Twój głos na tę grę został oddany!",
     "zen mode": "Tryb zen",
+    "lines are hard limits on content, things that the gm or the players don't want to engage in. setting up a line means that content won't show up in the game at all.": "Linie to twarde granice dotyczące treści, których MG lub gracze nie chcą poruszać.",
     "{n} selected|one": "Wybrano: {n}",
     "{n} selected|other": "Wybrano: {n}",
-    "a-translator: imported {n} new entries|one": "Zaimportowano nowych wpisów: {n}",
-    "lines are hard limits on content, things that the gm or the players don't want to engage in. setting up a line means that content won't show up in the game at all.": "Linie to twarde granice dotyczące treści, których MG lub gracze nie chcą poruszać."
+    "a-translator: imported {n} new entries|one": "Zaimportowano nowych wpisów: {n}"
   }
 }

@@ -21,6 +21,7 @@
 - [What is A-Translator?](#what-is-a-translator)
 - [What A-Translator is not](#what-a-translator-is-not)
 - [Installation](#installation)
+- [Alchemy desktop app (macOS)](#alchemy-desktop-app-macos)
 - [Usage](#usage)
 - [Available dictionaries](#available-dictionaries)
 - [Dictionary types and format](#dictionary-types-and-format)
@@ -77,6 +78,23 @@ Recommended settings:
 3. Replace the default content with the copied script, then save (File ▸ Save, or <kbd>Ctrl</kbd>+<kbd>S</kbd> / <kbd>⌘</kbd>+<kbd>S</kbd>).
 
 Future script updates are handled automatically by Tampermonkey.
+
+## Alchemy desktop app (macOS)
+
+Tampermonkey does not run inside the Alchemy desktop app. **Alchemy Launcher** solves this: it starts the Alchemy app with A-Translator injected.
+
+1. Install [Node.js](https://nodejs.org) 22 or later.
+2. Download `Alchemy-Launcher-macOS.zip` from the [latest release](https://github.com/BriocheMasquee/a-translator/releases/latest), unzip it and move **Alchemy Launcher** to your Applications folder.
+3. The first time, macOS may refuse to open it because it is not notarized by Apple: right-click the app, choose **Open**, then confirm. (Alternative: `xattr -dr com.apple.quarantine "/Applications/Alchemy Launcher.app"` in the Terminal.)
+4. Start Alchemy through the launcher from now on. If Alchemy is already open, the launcher asks before closing and restarting it.
+
+Good to know:
+
+- While Alchemy runs, a debugging port is open on your own computer only (127.0.0.1, random port). Nothing is reachable from outside.
+- At each start, the launcher looks for a newer version of the script on this repository and uses it if there is one; offline, it uses the embedded copy.
+- If Alchemy updates itself and restarts without the translation, the launcher offers to restart it with the translation.
+- For now the launcher's messages are in French. Its log is `~/Library/Logs/Alchemy Launcher.log`.
+- Sources and build script: [`launcher/macos/`](launcher/macos/).
 
 ## Usage
 

@@ -21,6 +21,7 @@
 - [O que é o A-Translator?](#o-que-é-o-a-translator)
 - [O que o A-Translator não é](#o-que-o-a-translator-não-é)
 - [Instalação](#instalação)
+- [App de desktop do Alchemy (macOS)](#app-de-desktop-do-alchemy-macos)
 - [Uso](#uso)
 - [Dicionários disponíveis](#dicionários-disponíveis)
 - [Tipos e formato de dicionário](#tipos-e-formato-de-dicionário)
@@ -77,6 +78,23 @@ Configurações recomendadas:
 3. Substitua o conteúdo padrão pelo script copiado e salve (File ▸ Save, ou <kbd>Ctrl</kbd>+<kbd>S</kbd> / <kbd>⌘</kbd>+<kbd>S</kbd>).
 
 As próximas atualizações do script são feitas automaticamente pelo Tampermonkey.
+
+## App de desktop do Alchemy (macOS)
+
+O Tampermonkey não funciona dentro do app de desktop do Alchemy. O **Alchemy Launcher** resolve isso: ele abre o app do Alchemy com o A-Translator injetado.
+
+1. Instale o [Node.js](https://nodejs.org) 22 ou mais recente.
+2. Baixe o `Alchemy-Launcher-macOS.zip` na [última versão publicada](https://github.com/BriocheMasquee/a-translator/releases/latest), descompacte-o e mova o **Alchemy Launcher** para a pasta Aplicativos.
+3. Na primeira vez, o macOS pode se recusar a abri-lo porque ele não é notarizado pela Apple: clique com o botão direito no app, escolha **Abrir** e confirme. (Alternativa: `xattr -dr com.apple.quarantine "/Applications/Alchemy Launcher.app"` no Terminal.)
+4. A partir daí, abra o Alchemy pelo launcher. Se o Alchemy já estiver aberto, o launcher pergunta antes de fechá-lo e reiniciá-lo.
+
+Bom saber:
+
+- Enquanto o Alchemy está aberto, uma porta de depuração fica aberta apenas no seu próprio computador (127.0.0.1, porta aleatória). Nada fica acessível de fora.
+- A cada abertura, o launcher procura uma versão mais nova do script neste repositório e a usa, se houver; sem conexão, ele usa a cópia embutida.
+- Se o Alchemy se atualizar e reiniciar sem a tradução, o launcher oferece reiniciá-lo com a tradução.
+- Por enquanto, as mensagens do launcher estão em francês. O registro (log) fica em `~/Library/Logs/Alchemy Launcher.log`.
+- Código-fonte e script de compilação: [`launcher/macos/`](launcher/macos/).
 
 ## Uso
 
